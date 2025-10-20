@@ -1,0 +1,40 @@
+from pydantic_settings import BaseSettings
+from typing import List
+from functools import lru_cache
+
+
+class Settings(BaseSettings):
+    # Project Settings
+    PROJECT_NAME: str = "Commit Tutor API"
+    VERSION: str = "1.0.0"
+    API_V1_STR: str = "/api/v1"
+
+    # CORS Settings
+    BACKEND_CORS_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8000",
+    ]
+
+    # Database Settings
+    DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost/commit_tutor"
+
+    # Security Settings
+    SECRET_KEY: str = "your-secret-key-change-this-in-production"
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+
+    # OpenAI Settings (for future AI features)
+    OPENAI_API_KEY: str = ""
+
+    class Config:
+        env_file = ".env"
+        case_sensitive = True
+
+
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings()
+
+
+settings = get_settings()
