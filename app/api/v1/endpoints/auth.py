@@ -11,7 +11,6 @@ import httpx
 from datetime import datetime, timedelta
 from jose import jwt
 import logging
-from app.db.temporary_storage import save_github_token_temp
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -124,9 +123,7 @@ async def github_oauth_callback(request: GitHubCallbackRequest):
             github_user = user_response.json()
             print(f"GitHub 사용자 정보 획득: {github_user.get('login')}")
 
-            github_user_id = str(github_user["id"])
-            save_github_token_temp(github_user_id, github_access_token)
-            print(f"GitHub Access Token을 임시 저장소에 저장 완료. User ID: {github_user_id}")
+            # GitHub Access Token은 JWT에 포함되므로 별도 저장 불필요
 
             # Step 3: 이메일 정보 조회 (별도 API 필요)
             email = github_user.get("email")
@@ -157,11 +154,12 @@ async def github_oauth_callback(request: GitHubCallbackRequest):
                                 email = email_data.get("email")
                                 break
 
-            # Step 4: JWT 토큰 생성
+            # Step 4: JWT 토큰 생성 (GitHub Access Token 포함)
             jwt_payload = {
                 "sub": str(github_user["id"]),  # subject: 사용자 ID
                 "username": github_user["login"],
                 "email": email,
+                "github_access_token": github_access_token,  # GitHub API 호출용 토큰
                 "iat": datetime.utcnow(),  # issued at
                 "exp": datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
             }
