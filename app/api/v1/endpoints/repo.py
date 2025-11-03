@@ -1,12 +1,12 @@
 # github_api.py
 import random
-from fastapi import APIRouter, HTTPException, status, Query
+from fastapi import APIRouter, HTTPException, status, Query, Depends
 from datetime import datetime
 import requests
 from typing import List, Dict, Any, Optional
 import json
 
-from app.db.temporary_storage import save_github_token_temp
+from app.api.dependencies import get_github_access_token
 
 router = APIRouter()
 
@@ -255,9 +255,12 @@ def process_commits_data(access_token: str, owner: str, repo: str, raw_commits_l
 # print(json.dumps(clean_commits, indent=4, ensure_ascii=False))
 
 @router.get("/get_repo")
-async def get_user_repo():
-    access_token = "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"
-    
+async def get_user_repo(access_token: str = Depends(get_github_access_token)):
+    """
+    현재 로그인한 사용자의 GitHub 저장소 목록을 반환합니다.
+
+    인증이 필요한 엔드포인트입니다. Authorization 헤더에 JWT 토큰을 포함해야 합니다.
+    """
     raw_repos = get_user_repositories(access_token=access_token)
     clean_repos = process_repositories_data(raw_repos)
     return clean_repos
@@ -265,13 +268,14 @@ async def get_user_repo():
 @router.get("/{repo_identifier}/commits")
 async def get_repo_commits_for_frontend(
     repo_identifier: str, # 경로에서 숫자 ID 또는 'owner/repo' 형태의 전체 이름을 받습니다.
-    branch: str = Query("main", description="조회할 브랜치 이름")
+    branch: str = Query("main", description="조회할 브랜치 이름"),
+    access_token: str = Depends(get_github_access_token)
 ):
     """
     특정 저장소의 커밋 목록을 프론트엔드에 필요한 형식으로 반환합니다.
+
+    인증이 필요한 엔드포인트입니다. Authorization 헤더에 JWT 토큰을 포함해야 합니다.
     """
-    # 💡 실제 구현에서는 Access Token을 사용자 세션/DB에서 가져와야 합니다.
-    access_token = "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"
     
     owner = None
     repo = None
@@ -356,12 +360,13 @@ def get_repository_branches(access_token: str, owner: str, repo: str, per_page: 
 @router.get("/{repo_identifier}/branches")
 async def get_repo_branches_for_frontend(
     repo_identifier: str,
+    access_token: str = Depends(get_github_access_token)
 ):
     """
     특정 저장소의 브랜치 목록을 반환합니다. 응답은 브랜치 이름의 리스트입니다.
+
+    인증이 필요한 엔드포인트입니다. Authorization 헤더에 JWT 토큰을 포함해야 합니다.
     """
-    # 💡 실제 구현에서는 Access Token을 사용자 세션/DB에서 가져와야 합니다.
-    access_token = "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"
 
     # 숫자 ID 또는 'owner/repo' 모두 허용
     if repo_identifier.isdigit():
