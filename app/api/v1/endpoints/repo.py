@@ -75,10 +75,10 @@ def get_user_repositories(access_token: str) -> List[Dict[str, Any]]:
 
 def process_repositories_data(raw_repos_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    GitHub 저장소 목록 JSON에서 필요한 핵심 정보만 추출하여 가공합니다.
+    GitHub 저장소 목록 JSON에서 필요한 핵심 정보만 추출하여 가공하고 최신순으로 정렬합니다.
     """
     processed_list = []
-    
+
     for repo in raw_repos_list:
         # Commit Tutor 프로젝트에 중요한 핵심 필드만 추출
         processed_repo = {
@@ -93,12 +93,15 @@ def process_repositories_data(raw_repos_list: List[Dict[str, Any]]) -> List[Dict
             "default_branch": repo.get("default_branch", "main"),   # 기본 브랜치 (커밋 조회 시 필요)
             "updated_at": repo.get("updated_at"),                   # 최종 업데이트 시각
         }
-        
+
         # 포크된 저장소는 보통 사용자가 직접 커밋하는 대상이 아니므로 제외 (선택 사항)
         # 만약 직접 포크 저장소에 커밋하는 경우를 허용하려면 이 필터를 제거하세요.
-        # if not processed_repo["fork"]: 
+        # if not processed_repo["fork"]:
         processed_list.append(processed_repo)
-            
+
+    # 최신 업데이트 순으로 정렬 (updated_at 기준 내림차순)
+    processed_list.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
+
     return processed_list
 def get_repository_by_id(access_token: str, repo_id: int) -> Optional[Dict[str, Any]]:
     """
