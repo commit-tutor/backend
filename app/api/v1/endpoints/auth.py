@@ -60,7 +60,7 @@ async def github_oauth_callback(request: GitHubCallbackRequest):
     async with httpx.AsyncClient() as client:
         try:
             # Step 1: Authorization code를 access token으로 교환
-            logger.info("GitHub access token 요청 중...")
+            print("GitHub access token 요청 중...")
             token_response = await client.post(
                 "https://github.com/login/oauth/access_token",
                 headers={
@@ -76,7 +76,7 @@ async def github_oauth_callback(request: GitHubCallbackRequest):
             )
 
             if token_response.status_code != 200:
-                logger.error(f"GitHub token 요청 실패: {token_response.text}")
+                print(f"GitHub token 요청 실패: {token_response.text}")
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="GitHub 토큰 요청에 실패했습니다."
@@ -85,7 +85,7 @@ async def github_oauth_callback(request: GitHubCallbackRequest):
             token_data = token_response.json()
 
             if "error" in token_data:
-                logger.error(f"GitHub OAuth error: {token_data}")
+                print(f"GitHub OAuth error: {token_data}")
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"GitHub OAuth 오류: {token_data.get('error_description', 'Unknown error')}"
@@ -99,10 +99,12 @@ async def github_oauth_callback(request: GitHubCallbackRequest):
                     detail="GitHub access token을 받지 못했습니다."
                 )
 
-            logger.info("GitHub access token 획득 성공")
+            print("GitHub access token 획득 성공")
+            print(github_access_token)
+
 
             # Step 2: GitHub 사용자 정보 조회
-            logger.info("GitHub 사용자 정보 조회 중...")
+            print("GitHub 사용자 정보 조회 중...")
             user_response = await client.get(
                 "https://api.github.com/user",
                 headers={
@@ -113,20 +115,21 @@ async def github_oauth_callback(request: GitHubCallbackRequest):
             )
 
             if user_response.status_code != 200:
-                logger.error(f"GitHub 사용자 정보 조회 실패: {user_response.text}")
+                print(f"GitHub 사용자 정보 조회 실패: {user_response.text}")
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="GitHub 사용자 정보를 가져올 수 없습니다."
                 )
-
             github_user = user_response.json()
-            logger.info(f"GitHub 사용자 정보 획득: {github_user.get('login')}")
+            print(f"GitHub 사용자 정보 획득: {github_user.get('login')}")
+
+            # GitHub Access Token은 JWT에 포함되므로 별도 저장 불필요
 
             # Step 3: 이메일 정보 조회 (별도 API 필요)
             email = github_user.get("email")
 
             if not email:
-                logger.info("이메일 정보 추가 조회 중...")
+                print("이메일 정보 추가 조회 중...")
                 email_response = await client.get(
                     "https://api.github.com/user/emails",
                     headers={
@@ -151,11 +154,12 @@ async def github_oauth_callback(request: GitHubCallbackRequest):
                                 email = email_data.get("email")
                                 break
 
-            # Step 4: JWT 토큰 생성
+            # Step 4: JWT 토큰 생성 (GitHub Access Token 포함)
             jwt_payload = {
                 "sub": str(github_user["id"]),  # subject: 사용자 ID
                 "username": github_user["login"],
                 "email": email,
+                "github_access_token": github_access_token,  # GitHub API 호출용 토큰
                 "iat": datetime.utcnow(),  # issued at
                 "exp": datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
             }
@@ -166,7 +170,8 @@ async def github_oauth_callback(request: GitHubCallbackRequest):
                 algorithm=settings.ALGORITHM
             )
 
-            logger.info("JWT 토큰 생성 완료")
+            print("JWT 토큰 생성 완료")
+
 
             # Step 5: 사용자 응답 생성
             # TODO: DB에서 사용자 프로필 조회하여 needs_onboarding 판단
@@ -183,13 +188,13 @@ async def github_oauth_callback(request: GitHubCallbackRequest):
             )
 
         except httpx.TimeoutException:
-            logger.error("GitHub API 요청 타임아웃")
+            print("GitHub API 요청 타임아웃")
             raise HTTPException(
                 status_code=status.HTTP_504_GATEWAY_TIMEOUT,
                 detail="GitHub API 요청 시간이 초과되었습니다."
             )
         except httpx.HTTPError as e:
-            logger.error(f"HTTP error: {str(e)}")
+            print(f"HTTP error: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"네트워크 오류가 발생했습니다: {str(e)}"
