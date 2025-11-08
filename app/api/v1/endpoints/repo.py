@@ -5,6 +5,8 @@ from datetime import datetime
 import requests
 from typing import List, Dict, Any, Optional
 import json
+import asyncio
+import httpx
 
 from app.api.dependencies import get_github_access_token
 
@@ -141,19 +143,45 @@ def get_commit_details(access_token: str, owner: str, repo: str, commit_sha: str
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28"
     }
-    
+
     # 커밋 상세 API 엔드포인트: /repos/{owner}/{repo}/commits/{commit_sha}
     details_endpoint = f"{GITHUB_API_BASE_URL}/repos/{owner}/{repo}/commits/{commit_sha}"
-    
+
     try:
         response = requests.get(details_endpoint, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
         response.raise_for_status()
-        
+
         return response.json()
-        
+
     except requests.exceptions.Timeout:
         return None
     except requests.exceptions.HTTPError as e:
+        print(f"GitHub Commit Detail API 요청 실패 (SHA: {commit_sha}): {e}")
+        return None
+    except Exception as e:
+        print(f"예외 발생: {e}")
+        return None
+
+async def get_commit_details_async(client: httpx.AsyncClient, access_token: str, owner: str, repo: str, commit_sha: str) -> Optional[Dict[str, Any]]:
+    """
+    비동기로 특정 커밋의 상세 내역을 가져옵니다.
+    """
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28"
+    }
+
+    details_endpoint = f"{GITHUB_API_BASE_URL}/repos/{owner}/{repo}/commits/{commit_sha}"
+
+    try:
+        response = await client.get(details_endpoint, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
+        response.raise_for_status()
+        return response.json()
+    except httpx.TimeoutException:
+        print(f"타임아웃: {commit_sha}")
+        return None
+    except httpx.HTTPStatusError as e:
         print(f"GitHub Commit Detail API 요청 실패 (SHA: {commit_sha}): {e}")
         return None
     except Exception as e:
@@ -203,24 +231,24 @@ def process_commits_data(access_token: str, owner: str, repo: str, raw_commits_l
     GitHub 커밋 목록 JSON을 프론트엔드 형식에 맞게 가공하고 상세 정보를 추가합니다.
     """
     processed_list = []
-    
+
     learning_values: List[str] = ['high', 'medium', 'low']
-    
+
     for commit_data in raw_commits_list:
         sha = commit_data.get('sha')
         commit_info = commit_data.get('commit', {})
         author_info = commit_info.get('author', {})
-        
+
         # 1. 상세 정보 가져오기 (파일 변경, 추가/삭제 라인 수)
         details = get_commit_details(access_token, owner, repo, sha)
-        
+
         files_changed = 0
         additions = 0
         deletions = 0
-        
+
         if details and 'stats' in details:
             # filesChanged는 'files' 목록의 길이
-            files_changed = len(details.get('files', [])) 
+            files_changed = len(details.get('files', []))
             # additions, deletions은 'stats' 객체에서 가져옵니다.
             stats = details['stats']
             additions = stats.get('additions', 0)
@@ -237,7 +265,7 @@ def process_commits_data(access_token: str, owner: str, repo: str, raw_commits_l
 
         # 3. 데이터 가공 및 임시 필드 추가
         processed_commit = {
-            "sha": sha, 
+            "sha": sha,
             "message": commit_info.get('message', '').strip(),
             "author": commit_data.get('author', {}).get('login') or author_info.get('name'), # GitHub ID가 없으면 Git Name 사용
             "date": formatted_date,
@@ -247,9 +275,71 @@ def process_commits_data(access_token: str, owner: str, repo: str, raw_commits_l
             "learningValue": random.choice(learning_values), # 💡 임시 값
             "isCompleted": random.choice([True, False, False]), # 💡 임시 값
         }
-        
+
         processed_list.append(processed_commit)
-            
+
+    return processed_list
+
+async def process_commits_data_async(access_token: str, owner: str, repo: str, raw_commits_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    비동기로 GitHub 커밋 목록을 처리하고 상세 정보를 병렬로 가져옵니다.
+    """
+    learning_values: List[str] = ['high', 'medium', 'low']
+
+    async with httpx.AsyncClient() as client:
+        # 모든 커밋의 상세 정보를 병렬로 가져오기
+        tasks = []
+        for commit_data in raw_commits_list:
+            sha = commit_data.get('sha')
+            task = get_commit_details_async(client, access_token, owner, repo, sha)
+            tasks.append((commit_data, task))
+
+        # 병렬 실행
+        results = await asyncio.gather(*[task for _, task in tasks])
+
+        # 결과 처리
+        processed_list = []
+        for idx, commit_data in enumerate(raw_commits_list):
+            sha = commit_data.get('sha')
+            commit_info = commit_data.get('commit', {})
+            author_info = commit_info.get('author', {})
+
+            # 상세 정보
+            details = results[idx]
+            files_changed = 0
+            additions = 0
+            deletions = 0
+
+            if details and 'stats' in details:
+                files_changed = len(details.get('files', []))
+                stats = details['stats']
+                additions = stats.get('additions', 0)
+                deletions = stats.get('deletions', 0)
+
+            # 날짜 포맷팅
+            raw_date_str = author_info.get('date')
+            formatted_date = raw_date_str
+            try:
+                dt_object = datetime.strptime(raw_date_str, "%Y-%m-%dT%H:%M:%SZ")
+                formatted_date = dt_object.strftime("%Y-%m-%d %H:%M:%S (UTC)")
+            except ValueError:
+                pass
+
+            # 데이터 가공
+            processed_commit = {
+                "sha": sha,
+                "message": commit_info.get('message', '').strip(),
+                "author": commit_data.get('author', {}).get('login') or author_info.get('name'),
+                "date": formatted_date,
+                "filesChanged": files_changed,
+                "additions": additions,
+                "deletions": deletions,
+                "learningValue": random.choice(learning_values),
+                "isCompleted": random.choice([True, False, False]),
+            }
+
+            processed_list.append(processed_commit)
+
     return processed_list
 
 
@@ -323,9 +413,9 @@ async def get_repo_commits_for_frontend(
     # 3. 커밋 목록 가져오기
     raw_commits = get_repository_commits(access_token=access_token, owner=owner, repo=repo, branch=branch, per_page=20)
 
-    # 4. 상세 정보 포함하여 프론트엔드 형식으로 가공
-    clean_commits = process_commits_data(access_token=access_token, owner=owner, repo=repo, raw_commits_list=raw_commits)
-    
+    # 4. 상세 정보 포함하여 프론트엔드 형식으로 가공 (비동기 병렬 처리)
+    clean_commits = await process_commits_data_async(access_token=access_token, owner=owner, repo=repo, raw_commits_list=raw_commits)
+
     return clean_commits
 
 
