@@ -10,8 +10,11 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
 
     # CORS Settings
-    # 배포 환경: 모든 origin 허용 (개발 환경에서는 특정 도메인으로 제한 권장)
-    BACKEND_CORS_ORIGINS: List[str] = ["*"]
+    BACKEND_CORS_ORIGINS: List[str] = [
+        "http://localhost:5174",
+        "http://localhost:5173",
+        "https://commit-tutor.vercel.app",
+    ]
 
     # Database Settings
     DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost/commit_tutor"
