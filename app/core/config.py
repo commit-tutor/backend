@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     # OpenAI Settings (for future AI features)
     OPENAI_API_KEY: str = ""
 
+    # Gemini Settings
+    GEMINI_API_KEY: str = ""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=True,

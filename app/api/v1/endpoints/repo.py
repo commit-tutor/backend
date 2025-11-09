@@ -9,6 +9,7 @@ import asyncio
 import httpx
 
 from app.api.dependencies import get_github_access_token
+from app.schemas.analysis import CommitDetailResponse, CommitDiffInfo
 
 router = APIRouter()
 
@@ -482,3 +483,128 @@ async def get_repo_branches_for_frontend(
     raw = get_repository_branches(access_token, owner, repo)
     branch_names = [b.get('name') for b in raw if isinstance(b, dict) and b.get('name')]
     return branch_names
+
+
+async def get_commit_with_diff(access_token: str, owner: str, repo: str, commit_sha: str) -> CommitDetailResponse:
+    """
+    커밋의 상세 정보를 diff(patch) 정보와 함께 반환합니다.
+    퀴즈 및 리뷰 생성에 필요한 전체 정보를 제공합니다.
+
+    Args:
+        access_token: GitHub 액세스 토큰
+        owner: 저장소 소유자
+        repo: 저장소 이름
+        commit_sha: 커밋 SHA
+
+    Returns:
+        CommitDetailResponse 객체 (diff 정보 포함)
+
+    Raises:
+        HTTPException: 커밋 정보를 가져오지 못한 경우
+    """
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28"
+    }
+
+    details_endpoint = f"{GITHUB_API_BASE_URL}/repos/{owner}/{repo}/commits/{commit_sha}"
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(details_endpoint, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
+            response.raise_for_status()
+
+            data = response.json()
+
+            # 커밋 기본 정보 추출
+            commit_info = data.get('commit', {})
+            author_info = commit_info.get('author', {})
+            stats = data.get('stats', {})
+            files_data = data.get('files', [])
+
+            # 날짜 포맷팅
+            raw_date_str = author_info.get('date', '')
+            formatted_date = raw_date_str
+            try:
+                dt_object = datetime.strptime(raw_date_str, "%Y-%m-%dT%H:%M:%SZ")
+                formatted_date = dt_object.strftime("%Y-%m-%d %H:%M:%S (UTC)")
+            except ValueError:
+                pass
+
+            # 파일 변경 정보 구성
+            files = []
+            for file_data in files_data:
+                diff_info = CommitDiffInfo(
+                    filename=file_data.get('filename', ''),
+                    status=file_data.get('status', 'modified'),
+                    additions=file_data.get('additions', 0),
+                    deletions=file_data.get('deletions', 0),
+                    patch=file_data.get('patch')  # diff 패치 내용
+                )
+                files.append(diff_info)
+
+            # CommitDetailResponse 생성
+            commit_detail = CommitDetailResponse(
+                sha=data.get('sha', ''),
+                message=commit_info.get('message', '').strip(),
+                author=data.get('author', {}).get('login') or author_info.get('name', 'Unknown'),
+                date=formatted_date,
+                filesChanged=len(files_data),
+                additions=stats.get('additions', 0),
+                deletions=stats.get('deletions', 0),
+                files=files
+            )
+
+            return commit_detail
+
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail=f"커밋 {commit_sha} 정보 가져오기 시간 초과"
+        )
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=e.response.status_code,
+            detail=f"커밋 {commit_sha}를 찾을 수 없습니다."
+        )
+    except Exception as e:
+        print(f"커밋 상세 정보 조회 실패: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"커밋 상세 정보 조회 중 오류 발생: {str(e)}"
+        )
+
+
+@router.get("/{repo_identifier}/commits/{commit_sha}/details")
+async def get_commit_details_for_learning(
+    repo_identifier: str,
+    commit_sha: str,
+    access_token: str = Depends(get_github_access_token)
+) -> CommitDetailResponse:
+    """
+    특정 커밋의 상세 정보를 diff와 함께 반환합니다.
+    퀴즈/리뷰 생성에 사용됩니다.
+
+    인증이 필요한 엔드포인트입니다. Authorization 헤더에 JWT 토큰을 포함해야 합니다.
+    """
+    # 저장소 식별자 파싱
+    if repo_identifier.isdigit():
+        repo_id = int(repo_identifier)
+        repo_data = get_repository_by_id(access_token, repo_id)
+        if not repo_data:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="저장소를 찾을 수 없습니다.")
+        full_name = repo_data.get("full_name")
+        if not full_name:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="저장소 전체 이름을 확인할 수 없습니다.")
+        owner, repo = full_name.split('/', 1)
+    elif '/' in repo_identifier:
+        try:
+            owner, repo = repo_identifier.split('/', 1)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="잘못된 저장소 식별자 형식입니다.")
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="인식할 수 없는 저장소 식별자 형식입니다.")
+
+    # 커밋 상세 정보 조회
+    return await get_commit_with_diff(access_token, owner, repo, commit_sha)
