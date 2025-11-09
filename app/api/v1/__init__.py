@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import commits, auth, repo
+from app.api.v1.endpoints import commits, auth, repo, learning
 
 api_router = APIRouter()
 
@@ -7,3 +7,4 @@ api_router = APIRouter()
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(commits.router, prefix="/commits", tags=["commits"])
 api_router.include_router(repo.router, prefix="/repo", tags=["repo"])
+api_router.include_router(learning.router, prefix="/learning", tags=["learning"])

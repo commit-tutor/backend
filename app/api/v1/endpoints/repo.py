@@ -5,8 +5,11 @@ from datetime import datetime
 import requests
 from typing import List, Dict, Any, Optional
 import json
+import asyncio
+import httpx
 
 from app.api.dependencies import get_github_access_token
+from app.schemas.analysis import CommitDetailResponse, CommitDiffInfo
 
 router = APIRouter()
 
@@ -141,19 +144,45 @@ def get_commit_details(access_token: str, owner: str, repo: str, commit_sha: str
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28"
     }
-    
+
     # 커밋 상세 API 엔드포인트: /repos/{owner}/{repo}/commits/{commit_sha}
     details_endpoint = f"{GITHUB_API_BASE_URL}/repos/{owner}/{repo}/commits/{commit_sha}"
-    
+
     try:
         response = requests.get(details_endpoint, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
         response.raise_for_status()
-        
+
         return response.json()
-        
+
     except requests.exceptions.Timeout:
         return None
     except requests.exceptions.HTTPError as e:
+        print(f"GitHub Commit Detail API 요청 실패 (SHA: {commit_sha}): {e}")
+        return None
+    except Exception as e:
+        print(f"예외 발생: {e}")
+        return None
+
+async def get_commit_details_async(client: httpx.AsyncClient, access_token: str, owner: str, repo: str, commit_sha: str) -> Optional[Dict[str, Any]]:
+    """
+    비동기로 특정 커밋의 상세 내역을 가져옵니다.
+    """
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28"
+    }
+
+    details_endpoint = f"{GITHUB_API_BASE_URL}/repos/{owner}/{repo}/commits/{commit_sha}"
+
+    try:
+        response = await client.get(details_endpoint, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
+        response.raise_for_status()
+        return response.json()
+    except httpx.TimeoutException:
+        print(f"타임아웃: {commit_sha}")
+        return None
+    except httpx.HTTPStatusError as e:
         print(f"GitHub Commit Detail API 요청 실패 (SHA: {commit_sha}): {e}")
         return None
     except Exception as e:
@@ -203,24 +232,24 @@ def process_commits_data(access_token: str, owner: str, repo: str, raw_commits_l
     GitHub 커밋 목록 JSON을 프론트엔드 형식에 맞게 가공하고 상세 정보를 추가합니다.
     """
     processed_list = []
-    
+
     learning_values: List[str] = ['high', 'medium', 'low']
-    
+
     for commit_data in raw_commits_list:
         sha = commit_data.get('sha')
         commit_info = commit_data.get('commit', {})
         author_info = commit_info.get('author', {})
-        
+
         # 1. 상세 정보 가져오기 (파일 변경, 추가/삭제 라인 수)
         details = get_commit_details(access_token, owner, repo, sha)
-        
+
         files_changed = 0
         additions = 0
         deletions = 0
-        
+
         if details and 'stats' in details:
             # filesChanged는 'files' 목록의 길이
-            files_changed = len(details.get('files', [])) 
+            files_changed = len(details.get('files', []))
             # additions, deletions은 'stats' 객체에서 가져옵니다.
             stats = details['stats']
             additions = stats.get('additions', 0)
@@ -237,7 +266,7 @@ def process_commits_data(access_token: str, owner: str, repo: str, raw_commits_l
 
         # 3. 데이터 가공 및 임시 필드 추가
         processed_commit = {
-            "sha": sha, 
+            "sha": sha,
             "message": commit_info.get('message', '').strip(),
             "author": commit_data.get('author', {}).get('login') or author_info.get('name'), # GitHub ID가 없으면 Git Name 사용
             "date": formatted_date,
@@ -247,9 +276,71 @@ def process_commits_data(access_token: str, owner: str, repo: str, raw_commits_l
             "learningValue": random.choice(learning_values), # 💡 임시 값
             "isCompleted": random.choice([True, False, False]), # 💡 임시 값
         }
-        
+
         processed_list.append(processed_commit)
-            
+
+    return processed_list
+
+async def process_commits_data_async(access_token: str, owner: str, repo: str, raw_commits_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    비동기로 GitHub 커밋 목록을 처리하고 상세 정보를 병렬로 가져옵니다.
+    """
+    learning_values: List[str] = ['high', 'medium', 'low']
+
+    async with httpx.AsyncClient() as client:
+        # 모든 커밋의 상세 정보를 병렬로 가져오기
+        tasks = []
+        for commit_data in raw_commits_list:
+            sha = commit_data.get('sha')
+            task = get_commit_details_async(client, access_token, owner, repo, sha)
+            tasks.append((commit_data, task))
+
+        # 병렬 실행
+        results = await asyncio.gather(*[task for _, task in tasks])
+
+        # 결과 처리
+        processed_list = []
+        for idx, commit_data in enumerate(raw_commits_list):
+            sha = commit_data.get('sha')
+            commit_info = commit_data.get('commit', {})
+            author_info = commit_info.get('author', {})
+
+            # 상세 정보
+            details = results[idx]
+            files_changed = 0
+            additions = 0
+            deletions = 0
+
+            if details and 'stats' in details:
+                files_changed = len(details.get('files', []))
+                stats = details['stats']
+                additions = stats.get('additions', 0)
+                deletions = stats.get('deletions', 0)
+
+            # 날짜 포맷팅
+            raw_date_str = author_info.get('date')
+            formatted_date = raw_date_str
+            try:
+                dt_object = datetime.strptime(raw_date_str, "%Y-%m-%dT%H:%M:%SZ")
+                formatted_date = dt_object.strftime("%Y-%m-%d %H:%M:%S (UTC)")
+            except ValueError:
+                pass
+
+            # 데이터 가공
+            processed_commit = {
+                "sha": sha,
+                "message": commit_info.get('message', '').strip(),
+                "author": commit_data.get('author', {}).get('login') or author_info.get('name'),
+                "date": formatted_date,
+                "filesChanged": files_changed,
+                "additions": additions,
+                "deletions": deletions,
+                "learningValue": random.choice(learning_values),
+                "isCompleted": random.choice([True, False, False]),
+            }
+
+            processed_list.append(processed_commit)
+
     return processed_list
 
 
@@ -323,9 +414,9 @@ async def get_repo_commits_for_frontend(
     # 3. 커밋 목록 가져오기
     raw_commits = get_repository_commits(access_token=access_token, owner=owner, repo=repo, branch=branch, per_page=20)
 
-    # 4. 상세 정보 포함하여 프론트엔드 형식으로 가공
-    clean_commits = process_commits_data(access_token=access_token, owner=owner, repo=repo, raw_commits_list=raw_commits)
-    
+    # 4. 상세 정보 포함하여 프론트엔드 형식으로 가공 (비동기 병렬 처리)
+    clean_commits = await process_commits_data_async(access_token=access_token, owner=owner, repo=repo, raw_commits_list=raw_commits)
+
     return clean_commits
 
 
@@ -392,3 +483,128 @@ async def get_repo_branches_for_frontend(
     raw = get_repository_branches(access_token, owner, repo)
     branch_names = [b.get('name') for b in raw if isinstance(b, dict) and b.get('name')]
     return branch_names
+
+
+async def get_commit_with_diff(access_token: str, owner: str, repo: str, commit_sha: str) -> CommitDetailResponse:
+    """
+    커밋의 상세 정보를 diff(patch) 정보와 함께 반환합니다.
+    퀴즈 및 리뷰 생성에 필요한 전체 정보를 제공합니다.
+
+    Args:
+        access_token: GitHub 액세스 토큰
+        owner: 저장소 소유자
+        repo: 저장소 이름
+        commit_sha: 커밋 SHA
+
+    Returns:
+        CommitDetailResponse 객체 (diff 정보 포함)
+
+    Raises:
+        HTTPException: 커밋 정보를 가져오지 못한 경우
+    """
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28"
+    }
+
+    details_endpoint = f"{GITHUB_API_BASE_URL}/repos/{owner}/{repo}/commits/{commit_sha}"
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(details_endpoint, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
+            response.raise_for_status()
+
+            data = response.json()
+
+            # 커밋 기본 정보 추출
+            commit_info = data.get('commit', {})
+            author_info = commit_info.get('author', {})
+            stats = data.get('stats', {})
+            files_data = data.get('files', [])
+
+            # 날짜 포맷팅
+            raw_date_str = author_info.get('date', '')
+            formatted_date = raw_date_str
+            try:
+                dt_object = datetime.strptime(raw_date_str, "%Y-%m-%dT%H:%M:%SZ")
+                formatted_date = dt_object.strftime("%Y-%m-%d %H:%M:%S (UTC)")
+            except ValueError:
+                pass
+
+            # 파일 변경 정보 구성
+            files = []
+            for file_data in files_data:
+                diff_info = CommitDiffInfo(
+                    filename=file_data.get('filename', ''),
+                    status=file_data.get('status', 'modified'),
+                    additions=file_data.get('additions', 0),
+                    deletions=file_data.get('deletions', 0),
+                    patch=file_data.get('patch')  # diff 패치 내용
+                )
+                files.append(diff_info)
+
+            # CommitDetailResponse 생성
+            commit_detail = CommitDetailResponse(
+                sha=data.get('sha', ''),
+                message=commit_info.get('message', '').strip(),
+                author=data.get('author', {}).get('login') or author_info.get('name', 'Unknown'),
+                date=formatted_date,
+                filesChanged=len(files_data),
+                additions=stats.get('additions', 0),
+                deletions=stats.get('deletions', 0),
+                files=files
+            )
+
+            return commit_detail
+
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail=f"커밋 {commit_sha} 정보 가져오기 시간 초과"
+        )
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=e.response.status_code,
+            detail=f"커밋 {commit_sha}를 찾을 수 없습니다."
+        )
+    except Exception as e:
+        print(f"커밋 상세 정보 조회 실패: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"커밋 상세 정보 조회 중 오류 발생: {str(e)}"
+        )
+
+
+@router.get("/{repo_identifier}/commits/{commit_sha}/details")
+async def get_commit_details_for_learning(
+    repo_identifier: str,
+    commit_sha: str,
+    access_token: str = Depends(get_github_access_token)
+) -> CommitDetailResponse:
+    """
+    특정 커밋의 상세 정보를 diff와 함께 반환합니다.
+    퀴즈/리뷰 생성에 사용됩니다.
+
+    인증이 필요한 엔드포인트입니다. Authorization 헤더에 JWT 토큰을 포함해야 합니다.
+    """
+    # 저장소 식별자 파싱
+    if repo_identifier.isdigit():
+        repo_id = int(repo_identifier)
+        repo_data = get_repository_by_id(access_token, repo_id)
+        if not repo_data:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="저장소를 찾을 수 없습니다.")
+        full_name = repo_data.get("full_name")
+        if not full_name:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="저장소 전체 이름을 확인할 수 없습니다.")
+        owner, repo = full_name.split('/', 1)
+    elif '/' in repo_identifier:
+        try:
+            owner, repo = repo_identifier.split('/', 1)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="잘못된 저장소 식별자 형식입니다.")
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="인식할 수 없는 저장소 식별자 형식입니다.")
+
+    # 커밋 상세 정보 조회
+    return await get_commit_with_diff(access_token, owner, repo, commit_sha)
