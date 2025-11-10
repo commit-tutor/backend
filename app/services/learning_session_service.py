@@ -65,8 +65,8 @@ class LearningSessionService:
       {
         "id": "q1",
         "type": "multiple",
-        "question": "이 코드는 JWT 기반 stateless 인증을 사용합니다. stateless 인증의 주요 장점은?",
-        "codeContext": "// 변경 전\\nfunction login(user) {\\n  session.set(user.id, user);\\n  return { sessionId: generateId() };\\n}\\n\\n// 변경 후\\nfunction login(user) {\\n  return { token: jwt.sign({ id: user.id }, SECRET) };\\n}",
+        "question": "다음 코드에서 사용된 JWT 인증 방식의 주요 장점은 무엇인가요?",
+        "codeContext": "function login(user) {\\n  const payload = { id: user.id, role: user.role };\\n  return { token: jwt.sign(payload, SECRET_KEY, { expiresIn: '1h' }) };\\n}",
         "options": [
           "서버가 세션 상태를 저장하지 않아 수평 확장(horizontal scaling)이 용이함",
           "클라이언트의 메모리 사용량을 줄일 수 있음",
@@ -95,36 +95,56 @@ class LearningSessionService:
   }
 }"""
 
-        prompt = f"""당신은 컴퓨터 과학 교육 전문가입니다. 아래 커밋을 분석하여 **퀴즈와 코드 리뷰를 동시에** 생성하세요.
+        prompt = f"""당신은 CS 교육 전문가입니다. 아래 커밋을 보고 **관련된 CS 지식**을 묻는 퀴즈와 리뷰를 생성하세요.
 
 # 커밋 정보
 {commits_text}
 
+# 퀴즈 작성 원칙
+위 커밋의 **실제 코드**에서 사용된 기술/패턴을 보고, 그와 관련된 **CS 이론과 원리**를 물으세요.
+
+## 좋은 예시
+커밋에서 `async/await` 사용 발견 →
+질문: "다음 코드에서 async/await의 동작 원리는?"
+codeContext: "async function fetchData() {{\\n  const result = await db.query('SELECT * FROM users');\\n  return result;\\n}}"
+
+커밋에서 `Array.map()` 사용 발견 →
+질문: "다음 코드에서 map이 순수 함수로 간주되는 이유는?"
+codeContext: "const doubled = items.map(x => x * 2);"
+
+## 나쁜 예시 (금지)
+❌ "이 변수명은 뭔가요?" (지엽적)
+❌ codeContext를 임의로 만든 예시 (실제 커밋 코드를 사용해야 함)
+❌ "변경 전/변경 후" 형식 (그냥 코드만 제시)
+
 # 요구사항
 ## 퀴즈 (quiz)
-- 총 {question_count}개의 객관식 퀴즈 (4지선다)
-- 난이도: {difficulty} - {difficulty_guide.get(difficulty, '')}
-- CS 원리를 묻는 질문 (시간복잡도, 동시성, 보안, 아키텍처 등)
-- 주제: 자료구조, 알고리즘, 동시성/병렬성, 메모리, 네트워크, 보안, 설계 패턴, DB, 아키텍처
+- {question_count}개의 객관식 (4지선다)
+- 난이도: {difficulty_guide.get(difficulty, '')}
+- **실제 커밋 코드**에서 발견한 기술/개념과 **관련된 CS 원리**를 물으세요
+- **codeContext: 위 커밋의 실제 코드 조각** (해당 개념을 보여주는 부분, 최대 8줄)
+- 주제 예시: 시간복잡도, 메모리 관리, 동시성, 보안, 디자인 패턴, 알고리즘, 자료구조
 
-## 코드 리뷰 (review)
+## 리뷰 (review)
 - summary: 커밋의 핵심 변경사항 요약 (2-3문장)
-- quality: 코드 품질 점수 (readability, performance, security: 0-100)
-- suggestions: 구체적인 개선 제안 (3-5개)
-- potentialBugs: 잠재적 버그나 문제점 (있다면)
+- quality: 코드 품질 점수 (0-100)
+- suggestions: 개선 제안 (3-5개)
+- potentialBugs: 잠재적 문제점
 
-# JSON 출력 형식 (필수)
+# JSON 형식
 {example_output}
 
-# 중요 규칙
-1. **유효한 JSON만 출력** (마크다운, 주석 금지)
-2. **quiz와 review를 모두 포함**한 단일 JSON 객체
-3. codeContext는 변경 전/후 코드 포함 (최대 15줄)
-4. 문자열 이스케이프: \\n으로 줄바꿈, \\" 처리
-5. 변수 직접 참조 금지
-6. 설명과 제안은 구체적이고 실용적으로
+# 절대 규칙
+1. 유효한 JSON만 출력 (마크다운 금지)
+2. 질문은 **CS 이론/원리** 중심 (코드 세부사항 금지)
+3. **codeContext는 위 커밋의 실제 코드에서 가져올 것** (임의로 만들지 말 것)
+4. **codeContext는 단일 코드 조각만** ("변경 전/후" 비교 금지)
+5. 문자열 이스케이프: \\n, \\"
+6. 변수 직접 참조 금지
+7. 오답도 교육적으로 (흔한 오개념 포함)
 
-이제 통합 학습 자료를 JSON으로 생성하세요:"""
+**중요**: codeContext는 위 "커밋 정보"의 실제 코드에서 가져와야 합니다. 변경 전/후를 비교하지 말고 해당 기술을 보여주는 코드 조각만 제시하세요.
+커밋에서 사용된 기술을 보고, 관련 CS 지식을 묻는 퀴즈+리뷰를 JSON으로 생성하세요:"""
 
         return prompt
 
