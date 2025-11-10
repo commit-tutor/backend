@@ -159,17 +159,23 @@ class GeminiService:
 
         except json.JSONDecodeError as e:
             logger.error(f"JSON 파싱 실패: {str(e)}")
-            logger.error(f"원본 응답: {response_text[:500]}")  # 처음 500자만 로깅
+            logger.error(f"원본 응답 (처음 1000자):\n{response_text[:1000]}")
+            logger.error(f"원본 응답 (끝 500자):\n{response_text[-500:]}")  # 끝부분도 확인
 
             # json_repair를 활용한 복구 시도
             if repair_json is not None:
                 try:
+                    logger.info("json_repair로 복구 시도 중...")
                     repaired = repair_json(cleaned_response)
+                    logger.info(f"복구된 JSON (처음 500자):\n{repaired[:500]}")
                     parsed_json = json.loads(repaired)
                     logger.info("json_repair를 사용해 JSON 응답 복구 성공")
                     return parsed_json
                 except Exception as repair_error:
-                    logger.error(f"json_repair 복구 실패: {repair_error}")
+                    logger.error(f"json_repair 복구 실패: {type(repair_error).__name__}: {repair_error}")
+                    # NameError 같은 경우 원본 응답에 문제가 있음
+                    if isinstance(repair_error, NameError):
+                        logger.error(f"⚠️ json_repair가 변수를 평가하려고 시도했습니다. 원본 JSON에 변수가 포함되어 있을 가능성이 높습니다.")
             else:
                 logger.error("json_repair 패키지가 설치되어 있지 않아 응답 복구를 건너뜁니다.")
 
