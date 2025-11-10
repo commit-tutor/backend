@@ -29,7 +29,8 @@ class QuizGenerator:
             "multiple_choice": "multiple",
             "mcq": "multiple",
         }
-        self._max_code_context_length = 800
+        self._max_code_context_length = 800  # codeContext 필드에 저장할 최대 길이
+        self._max_patch_preview_length = 1200  # 프롬프트에 포함할 diff 최대 길이 (늘림)
         self._max_options = 4
 
     def _normalize_question_data(self, raw_data: Dict[str, Any], idx: int) -> Optional[Dict[str, Any]]:
@@ -180,9 +181,9 @@ class QuizGenerator:
         """
         # 난이도별 설명
         difficulty_guide = {
-            "easy": "기본적인 코드 이해와 개념 파악에 중점",
-            "medium": "코드의 의도, 패턴, 베스트 프랙티스에 중점",
-            "hard": "심화된 분석, 최적화, 잠재적 이슈 발견에 중점"
+            "easy": "기본적인 CS 개념과 프로그래밍 원리 이해에 중점",
+            "medium": "설계 패턴, 알고리즘, 데이터 구조의 실제 적용 이해",
+            "hard": "성능 최적화, 시스템 설계, 보안 원칙 등 심화 개념 적용"
         }
 
         # 커밋 정보 요약
@@ -199,70 +200,78 @@ class QuizGenerator:
                 commit_info += f"\n파일: {file.filename} ({file.status})"
                 commit_info += f"\n  +{file.additions} -{file.deletions}"
                 if file.patch:
-                    # diff를 적절한 길이로 제한
-                    patch_preview = file.patch[:500] + ("..." if len(file.patch) > 500 else "")
+                    # diff를 충분히 제공 (학습자가 코드를 이해할 수 있도록)
+                    patch_preview = file.patch[:self._max_patch_preview_length]
+                    if len(file.patch) > self._max_patch_preview_length:
+                        patch_preview += "\n... (중략) ..."
                     commit_info += f"\n  Diff:\n{patch_preview}"
 
             commits_summary.append(commit_info)
 
         commits_text = "\n\n---\n\n".join(commits_summary)
 
-        # Few-shot 예시
+        # Few-shot 예시 (CS 원리 중심, 충분한 컨텍스트 제공)
         example_quiz = """
 {
   "questions": [
     {
       "id": "q1",
       "type": "multiple",
-      "question": "이 코드 변경의 주요 목적은 무엇인가요?",
-      "codeContext": "- const token = createToken(payload)\\n+ const token = jwt.sign(payload, secret)",
+      "question": "이 코드는 사용자 인증을 위해 JWT 기반의 stateless 방식으로 변경되었습니다. stateless 인증의 주요 장점은 무엇인가요?",
+      "codeContext": "// 변경 전: 서버 세션 사용\\nfunction login(user) {\\n  session.set(user.id, user);\\n  return { sessionId: generateId() };\\n}\\n\\n// 변경 후: JWT 토큰 사용\\nfunction login(user) {\\n  const payload = { id: user.id, role: user.role };\\n  return { token: jwt.sign(payload, SECRET_KEY) };\\n}",
       "options": [
-        "보안 강화를 위해 JWT 표준 라이브러리 사용",
-        "코드 가독성 향상",
-        "성능 최적화",
-        "단순 리팩토링"
+        "서버가 세션 상태를 저장하지 않아 수평 확장(horizontal scaling)이 용이하고, 서버 간 세션 동기화 문제가 없음",
+        "클라이언트의 메모리 사용량을 대폭 줄일 수 있음",
+        "네트워크 요청 시 암호화를 자동으로 수행하여 보안이 강화됨",
+        "데이터베이스 조회 없이 인증하므로 DB 부하가 완전히 제거됨"
       ],
       "correctAnswer": 0,
-      "explanation": "jwt.sign()을 사용하여 표준 JWT 토큰 생성 방식으로 변경했습니다. 이는 보안성과 호환성을 높이는 베스트 프랙티스입니다."
+      "explanation": "JWT는 토큰 자체에 사용자 정보를 담고 있어 서버가 세션 상태를 메모리나 DB에 저장할 필요가 없습니다(stateless). 이를 통해 여러 서버 인스턴스를 추가할 때 세션 공유 문제 없이 수평 확장이 가능하며, 로드밸런서를 통한 분산 처리가 자유롭습니다."
+    },
+    {
+      "id": "q2",
+      "type": "multiple",
+      "question": "데이터베이스 쿼리 함수를 동기에서 비동기로 변경했습니다. async/await를 사용했을 때 Node.js의 이벤트 루프 관점에서 어떤 성능적 이점이 있나요?",
+      "codeContext": "// 변경 전: 동기 방식 (blocking)\\nfunction getUsers() {\\n  const result = db.query('SELECT * FROM users');  // 쿼리 완료까지 대기\\n  return result;\\n}\\n\\n// 변경 후: 비동기 방식 (non-blocking)\\nasync function getUsers() {\\n  const result = await db.query('SELECT * FROM users');\\n  return result;\\n}",
+      "options": [
+        "I/O 대기 시간 동안 이벤트 루프가 다른 요청을 처리할 수 있어 동시성(concurrency)이 향상되고, 전체 처리량(throughput)이 증가함",
+        "CPU 연산 속도가 빨라지고 메모리 사용량이 감소함",
+        "데이터베이스 쿼리 자체의 실행 시간이 단축됨",
+        "여러 쿼리를 병렬로 실행하여 멀티스레드처럼 동작함"
+      ],
+      "correctAnswer": 0,
+      "explanation": "async/await는 Non-blocking I/O를 가능하게 합니다. DB 쿼리처럼 외부 I/O를 기다리는 동안 스레드를 차단하지 않고 이벤트 루프가 다른 요청을 처리할 수 있습니다. 이는 동시성(concurrency) 향상으로 이어지며, 싱글 스레드 환경에서도 높은 처리량을 달성할 수 있게 합니다."
     }
   ]
 }
 """
 
         # 최종 프롬프트
-        prompt = f"""당신은 경력 10년의 시니어 개발자이자 코드 교육 전문가입니다.
-아래 커밋 변경사항을 분석하여 개발자가 이 코드를 학습할 수 있는 고품질 퀴즈를 생성해주세요.
+        prompt = f"""당신은 컴퓨터 과학 교육 전문가입니다. 아래 커밋에서 **CS 원리와 개념**을 학습하는 퀴즈를 생성하세요.
 
-**커밋 정보:**
+# 커밋 정보
 {commits_text}
 
-**퀴즈 생성 요구사항:**
-1. 총 {question_count}개의 퀴즈를 생성하세요
-2. 난이도: {difficulty} ({difficulty_guide.get(difficulty, '')})
-3. 문제 타입: 객관식 100% (주관식은 생성하지 마세요)
-4. 각 문제는 실제 코드 변경사항에 기반해야 합니다
-5. 객관식은 4개의 선택지를 제공하세요
-6. 정답 설명은 구체적이고 교육적이어야 합니다
+# 요구사항
+- 총 {question_count}개의 객관식 퀴즈 (4지선다)
+- 난이도: {difficulty} - {difficulty_guide.get(difficulty, '')}
+- 코드 세부사항이 아닌 **CS 원리**를 묻는 질문 (예: 시간복잡도, 동시성, 보안 원칙 등)
 
-**퀴즈 주제 다양성:**
-- 코드 이해 (변경의 목적, 의도)
-- 버그 탐지 (잠재적 문제점)
-- 베스트 프랙티스 (개선 방향)
-- 기술 개념 (사용된 패턴, 라이브러리)
-- 리팩토링 제안
+# CS 주제 카테고리 (골고루 분배)
+자료구조, 알고리즘, 동시성/병렬성, 메모리 관리, 네트워크, 보안, 설계 패턴, 데이터베이스, 아키텍처
 
-**출력 형식:**
-반드시 아래 JSON 형식으로만 응답하세요. 추가 설명은 포함하지 마세요.
-
+# JSON 출력 형식 (필수)
 {example_quiz}
 
-**주의사항:**
-- 모든 질문은 실제 커밋 내용과 직접적으로 연관되어야 합니다
-- 정답 해설에는 "왜 그런지"를 명확히 설명하세요
-- 너무 쉽거나 어려운 문제는 피하고 적절한 학습 효과를 주세요
-- codeContext는 실제 diff 내용을 간결하게 포함하세요
+# 중요 규칙
+1. **유효한 JSON만 출력** (마크다운, 주석 금지)
+2. **codeContext는 충분히 제공**: 변경 전/후 코드를 모두 보여주되 최대 15줄 이내
+3. **문자열 이스케이프**: \\n으로 줄바꿈, 따옴표는 \\" 처리
+4. **변수 직접 참조 금지**: budgetRanges 같은 변수명을 그대로 쓰지 마세요
+5. **오답도 교육적**: 흔한 오개념을 담아 학습 효과 증대
+6. **설명은 깊이 있게**: 관련 CS 용어와 원리를 상세히 설명
 
-이제 위 커밋들을 바탕으로 {question_count}개의 퀴즈를 JSON 형식으로 생성해주세요:"""
+이제 {question_count}개의 CS 원리 중심 퀴즈를 JSON으로 생성하세요:"""
 
         return prompt
 
@@ -306,7 +315,9 @@ class QuizGenerator:
 
             logger.info(f"[QuizGenerator] ========== Gemini 응답 데이터 ==========")
             logger.info(f"응답 키: {list(response_data.keys())}")
-            logger.info(f"응답 전체: {str(response_data)[:500]}...")
+            # 전체 응답을 JSON 형태로 예쁘게 출력 (디버깅용)
+            import json as json_lib
+            logger.info(f"응답 전체 (JSON):\n{json_lib.dumps(response_data, indent=2, ensure_ascii=False)[:2000]}...")
             logger.info(f"=================================================")
 
             # 응답 검증 및 파싱
