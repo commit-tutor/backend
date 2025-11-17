@@ -43,23 +43,6 @@ class AIAnalysisResponse(BaseModel):
         }
 
 
-class CodeAnalysisRequest(BaseModel):
-    """코드 분석 요청 스키마"""
-    commitSha: str = Field(..., description="분석할 커밋 SHA")
-    focusAreas: Optional[List[str]] = Field(
-        None,
-        description="집중 분석 영역 (예: 'security', 'performance', 'readability')"
-    )
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "commitSha": "abc123def456",
-                "focusAreas": ["security", "performance"]
-            }
-        }
-
-
 class CommitDiffInfo(BaseModel):
     """커밋 diff 상세 정보"""
     filename: str = Field(..., description="파일명")
