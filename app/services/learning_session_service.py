@@ -3,13 +3,13 @@
 퀴즈와 코드 리뷰를 단일 API 호출로 생성하여 토큰 절약
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 import logging
 from datetime import datetime
 
 from app.services.gemini_service import get_gemini_service
 from app.schemas.quiz import QuizQuestionResponse, QuizGenerationResponse
-from app.schemas.analysis import CommitDetailResponse, AIAnalysisResponse, CodeQuality
+from app.schemas.analysis import CommitDetailResponse
 
 logger = logging.getLogger(__name__)
 
@@ -59,41 +59,24 @@ class LearningSessionService:
 
         commits_text = "\n\n---\n\n".join(commits_summary)
 
-        # 통합 예시
+        # 퀴즈 예시
         example_output = """{
-  "quiz": {
-    "questions": [
-      {
-        "id": "q1",
-        "type": "multiple",
-        "question": "다음 코드에서 사용된 JWT 인증 방식의 주요 장점은 무엇인가요?",
-        "codeContext": "function login(user) {\\n  const payload = { id: user.id, role: user.role };\\n  return { token: jwt.sign(payload, SECRET_KEY, { expiresIn: '1h' }) };\\n}",
-        "options": [
-          "서버가 세션 상태를 저장하지 않아 수평 확장(horizontal scaling)이 용이함",
-          "클라이언트의 메모리 사용량을 줄일 수 있음",
-          "네트워크 지연 시간이 단축됨",
-          "데이터베이스 부하가 완전히 제거됨"
-        ],
-        "correctAnswer": 0,
-        "explanation": "JWT는 토큰 자체에 정보를 담아 서버가 세션을 저장하지 않습니다(stateless). 여러 서버 인스턴스 간 세션 동기화 문제 없이 수평 확장이 가능합니다."
-      }
-    ]
-  },
-  "review": {
-    "summary": "이 커밋은 세션 기반 인증을 JWT로 전환하여 stateless 아키텍처를 구현했습니다.",
-    "quality": {
-      "readability": 85,
-      "performance": 80,
-      "security": 90
-    },
-    "suggestions": [
-      "JWT secret을 환경 변수로 관리하세요",
-      "토큰 만료 시간(exp)을 설정하여 보안을 강화하세요"
-    ],
-    "potentialBugs": [
-      "토큰 갱신(refresh token) 메커니즘이 없어 장기 세션 관리가 어려울 수 있습니다"
-    ]
-  }
+  "questions": [
+    {
+      "id": "q1",
+      "type": "multiple",
+      "question": "다음 코드에서 사용된 JWT 인증 방식의 주요 장점은 무엇인가요?",
+      "codeContext": "function login(user) {\\n  const payload = { id: user.id, role: user.role };\\n  return { token: jwt.sign(payload, SECRET_KEY, { expiresIn: '1h' }) };\\n}",
+      "options": [
+        "서버가 세션 상태를 저장하지 않아 수평 확장(horizontal scaling)이 용이함",
+        "클라이언트의 메모리 사용량을 줄일 수 있음",
+        "네트워크 지연 시간이 단축됨",
+        "데이터베이스 부하가 완전히 제거됨"
+      ],
+      "correctAnswer": 0,
+      "explanation": "JWT는 토큰 자체에 정보를 담아 서버가 세션을 저장하지 않습니다(stateless). 여러 서버 인스턴스 간 세션 동기화 문제 없이 수평 확장이 가능합니다."
+    }
+  ]
 }"""
 
         # 주제에 따른 퀴즈 스타일 변경
@@ -163,24 +146,18 @@ codeContext: "const doubled = items.map(x => x * 2);"
 - 주제 예시: 시간복잡도, 메모리 관리, 동시성, 보안, 디자인 패턴, 알고리즘, 자료구조
 """
 
-        prompt = f"""당신은 CS 교육 전문가입니다. 아래 커밋을 보고 **관련된 CS 지식**을 묻는 퀴즈와 리뷰를 생성하세요.
+        prompt = f"""당신은 CS 교육 전문가입니다. 아래 커밋을 보고 **관련된 CS 지식**을 묻는 퀴즈를 생성하세요.
 
 # 커밋 정보
 {commits_text}
 
 {quiz_instruction}
 
-## 리뷰 (review)
-- summary: 커밋의 핵심 변경사항 요약 (2-3문장)
-- quality: 코드 품질 점수 (0-100)
-- suggestions: 개선 제안 (3-5개)
-- potentialBugs: 잠재적 문제점
-
 # JSON 형식
 {example_output}
 
 # 절대 규칙
-1. 유효한 JSON만 출력 (마크다운 금지)
+1. 유효한 JSON만 출력 (마크다운 금지, questions 배열만)
 2. 질문은 **CS 이론/원리** 중심 (코드 세부사항 금지)
 3. {"**주제 선택 시**: codeContext는 개념 설명을 위한 일반적 예시 (커밋과 무관해도 됨)" if selected_topic else "**주제 미선택 시**: codeContext는 위 커밋의 실제 코드에서 가져올 것"}
 4. **codeContext는 단일 코드 조각만** ("변경 전/후" 비교 금지)
@@ -189,7 +166,7 @@ codeContext: "const doubled = items.map(x => x * 2);"
 7. 오답도 교육적으로 (흔한 오개념 포함)
 
 {"**중요**: 주제에 대한 전반적인 CS 지식을 다루세요. 커밋 코드의 구체적인 내용은 무시하고, 해당 주제의 핵심 개념과 실무 적용을 학습할 수 있는 퀴즈를 만드세요." if selected_topic else "**중요**: codeContext는 위 '커밋 정보'의 실제 코드에서 가져와야 합니다. 변경 전/후를 비교하지 말고 해당 기술을 보여주는 코드 조각만 제시하세요."}
-{"주제 '" + selected_topic + "'에 대한 교육적 퀴즈+리뷰를 JSON으로 생성하세요:" if selected_topic else "커밋에서 사용된 기술을 보고, 관련 CS 지식을 묻는 퀴즈+리뷰를 JSON으로 생성하세요:"}"""
+{"주제 '" + selected_topic + "'에 대한 교육적 퀴즈를 JSON으로 생성하세요:" if selected_topic else "커밋에서 사용된 기술을 보고, 관련 CS 지식을 묻는 퀴즈를 JSON으로 생성하세요:"}"""
 
         return prompt
 
@@ -199,9 +176,9 @@ codeContext: "const doubled = items.map(x => x * 2);"
         question_count: int = 5,
         difficulty: str = "medium",
         selected_topic: Optional[str] = None
-    ) -> Dict[str, Any]:
+    ) -> QuizGenerationResponse:
         """
-        퀴즈와 코드 리뷰를 한 번에 생성
+        퀴즈 생성
 
         Args:
             commits: 커밋 상세 정보 목록
@@ -210,37 +187,33 @@ codeContext: "const doubled = items.map(x => x * 2);"
             selected_topic: 선택된 주제 제목 (선택 시 해당 주제에 집중)
 
         Returns:
-            {"quiz": QuizGenerationResponse, "review": AIAnalysisResponse}
+            QuizGenerationResponse: 생성된 퀴즈
         """
         try:
             topic_info = f", 주제: {selected_topic}" if selected_topic else ""
-            logger.info(f"[LearningSession] 통합 생성 시작: {len(commits)}개 커밋, 난이도: {difficulty}{topic_info}")
+            logger.info(f"[LearningSession] 퀴즈 생성 시작: {len(commits)}개 커밋, 난이도: {difficulty}{topic_info}")
 
-            # 통합 프롬프트 구성
+            # 프롬프트 구성
             prompt = self._build_unified_prompt(commits, question_count, difficulty, selected_topic)
             logger.info(f"[LearningSession] 프롬프트 길이: {len(prompt)} 문자")
 
-            # Gemini API 단일 호출
-            logger.info(f"[LearningSession] Gemini API 호출 중... (통합 요청)")
+            # Gemini API 호출
+            logger.info(f"[LearningSession] Gemini API 호출 중...")
             response_data = await self.gemini_service.generate_json(
                 prompt=prompt,
                 temperature=0.4,
-                max_tokens=10000  # 퀴즈 + 리뷰 모두 담을 충분한 토큰
+                max_tokens=8000
             )
 
             logger.info(f"[LearningSession] Gemini 응답 키: {list(response_data.keys())}")
 
             # 응답 검증
-            if "quiz" not in response_data or "review" not in response_data:
-                raise ValueError("응답에 'quiz' 또는 'review' 필드가 없습니다.")
+            if "questions" not in response_data:
+                raise ValueError("응답에 'questions' 필드가 없습니다.")
 
             # 퀴즈 파싱
-            quiz_data = response_data["quiz"]
-            if "questions" not in quiz_data:
-                raise ValueError("quiz에 'questions' 필드가 없습니다.")
-
             questions = []
-            for idx, q_data in enumerate(quiz_data["questions"]):
+            for idx, q_data in enumerate(response_data["questions"]):
                 try:
                     if "id" not in q_data:
                         q_data["id"] = f"q{idx + 1}"
@@ -266,31 +239,13 @@ codeContext: "const doubled = items.map(x => x * 2);"
                 }
             )
 
-            # 리뷰 파싱
-            review_data = response_data["review"]
-            quality_data = review_data.get("quality", {})
+            logger.info(f"[LearningSession] 퀴즈 생성 완료: {len(questions)}개")
 
-            review_response = AIAnalysisResponse(
-                summary=review_data.get("summary", ""),
-                quality=CodeQuality(
-                    readability=quality_data.get("readability", 0),
-                    performance=quality_data.get("performance", 0),
-                    security=quality_data.get("security", 0)
-                ),
-                suggestions=review_data.get("suggestions", []),
-                potentialBugs=review_data.get("potentialBugs", [])
-            )
-
-            logger.info(f"[LearningSession] 생성 완료: 퀴즈 {len(questions)}개, 리뷰 제안 {len(review_response.suggestions)}개")
-
-            return {
-                "quiz": quiz_response,
-                "review": review_response
-            }
+            return quiz_response
 
         except Exception as e:
-            logger.error(f"[LearningSession] 생성 실패: {str(e)}")
-            raise ValueError(f"학습 세션 생성 중 오류 발생: {str(e)}")
+            logger.error(f"[LearningSession] 퀴즈 생성 실패: {str(e)}")
+            raise ValueError(f"퀴즈 생성 중 오류 발생: {str(e)}")
 
 
 # 싱글톤 인스턴스

@@ -112,20 +112,19 @@ async def generate_learning_session(
     access_token: str = Depends(get_github_access_token)
 ):
     """
-    퀴즈와 코드 리뷰를 한 번에 생성 (토큰 절약)
+    커밋 기반 학습 퀴즈 생성
 
     **요청 본문:**
     - commitShas: 분석할 커밋 SHA 목록 (형식: "owner/repo:sha" 또는 "repo_id:sha")
     - difficulty: 난이도 (easy, medium, hard)
     - questionCount: 생성할 퀴즈 개수 (3-10)
+    - selectedTopic: 선택된 주제 (선택 시 해당 주제의 전반적 CS 지식 학습)
 
     **응답:**
     - quiz: 생성된 퀴즈 (questions, metadata)
-    - review: AI 코드 리뷰 (summary, quality, suggestions, potentialBugs)
     - commitInfo: 첫 번째 커밋의 상세 정보 (파일 목록)
 
-    이 엔드포인트는 단일 Gemini API 호출로 퀴즈와 리뷰를 동시에 생성하여
-    API 비용을 절감하고 응답 속도를 향상시킵니다.
+    주제를 선택하면 커밋 코드를 참고하여 해당 주제의 전반적인 CS 지식을 학습하는 퀴즈를 생성합니다.
     """
     try:
         logger.info(f"========== 통합 학습 세션 API 요청 ==========")
@@ -177,26 +176,24 @@ async def generate_learning_session(
                 detail="유효한 커밋 정보를 가져올 수 없습니다."
             )
 
-        # 통합 학습 세션 생성 (단일 Gemini 호출)
+        # 퀴즈 생성
         topic_info = f" (주제: {request.selectedTopic})" if request.selectedTopic else ""
-        logger.info(f"[통합 세션] Gemini API 단일 호출로 퀴즈 + 리뷰 생성 시작{topic_info}")
+        logger.info(f"[학습 세션] Gemini API 호출로 퀴즈 생성 시작{topic_info}")
         session_service = get_learning_session_service()
-        result = await session_service.generate_learning_session(
+        quiz = await session_service.generate_learning_session(
             commits=commits_details,
             question_count=request.questionCount,
             difficulty=request.difficulty,
             selected_topic=request.selectedTopic
         )
 
-        logger.info(f"========== 통합 학습 세션 API 응답 ==========")
-        logger.info(f"퀴즈: {len(result['quiz'].questions)}개")
-        logger.info(f"리뷰 제안: {len(result['review'].suggestions)}개")
+        logger.info(f"========== 학습 세션 API 응답 ==========")
+        logger.info(f"퀴즈: {len(quiz.questions)}개")
         logger.info(f"==========================================")
 
         # 첫 번째 커밋의 파일 정보도 포함 (프론트엔드 편의)
         return {
-            "quiz": result["quiz"],
-            "review": result["review"],
+            "quiz": quiz,
             "commitInfo": {
                 "sha": commits_details[0].sha,
                 "message": commits_details[0].message,
