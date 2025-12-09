@@ -45,6 +45,63 @@ class QuizQuestionResponse(QuizQuestionBase):
         }
 
 
+class LearningTopicResponse(BaseModel):
+    """학습 주제 응답 스키마"""
+    id: str = Field(..., description="주제 고유 ID")
+    title: str = Field(..., description="주제 제목")
+    description: str = Field(..., description="주제 설명")
+    difficulty: str = Field(..., description="예상 난이도 (easy, medium, hard)")
+    keywords: List[str] = Field(..., description="주제 관련 키워드")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": "topic_1",
+                "title": "비동기 프로그래밍 (Async/Await)",
+                "description": "Promise 기반 비동기 처리 패턴과 이벤트 루프의 동작 원리",
+                "difficulty": "medium",
+                "keywords": ["async", "await", "Promise", "비동기", "event loop"]
+            }
+        }
+
+
+class TopicExtractionRequest(BaseModel):
+    """주제 추출 요청 스키마"""
+    commitShas: List[str] = Field(..., description="주제를 추출할 커밋 SHA 목록", min_length=1)
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "commitShas": ["abc123def456", "789ghi012jkl"]
+            }
+        }
+
+
+class TopicExtractionResponse(BaseModel):
+    """주제 추출 응답 스키마"""
+    topics: List[LearningTopicResponse] = Field(..., description="추출된 학습 주제 목록")
+    metadata: Optional[dict] = Field(None, description="추가 메타데이터")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "topics": [
+                    {
+                        "id": "topic_1",
+                        "title": "JWT 인증 시스템",
+                        "description": "토큰 기반 인증의 장단점과 보안 고려사항",
+                        "difficulty": "medium",
+                        "keywords": ["JWT", "인증", "보안", "토큰"]
+                    }
+                ],
+                "metadata": {
+                    "totalCommits": 2,
+                    "extractedAt": "2025-01-09T12:00:00Z"
+                }
+            }
+        }
+
+
 class QuizGenerationRequest(BaseModel):
     """퀴즈 생성 요청 스키마"""
     commitShas: List[str] = Field(..., description="퀴즈를 생성할 커밋 SHA 목록", min_length=1)
@@ -58,13 +115,18 @@ class QuizGenerationRequest(BaseModel):
         ge=3,
         le=10
     )
+    selectedTopic: Optional[str] = Field(
+        None,
+        description="선택된 주제 ID (선택 시 해당 주제에 집중한 퀴즈 생성)"
+    )
 
     class Config:
         json_schema_extra = {
             "example": {
                 "commitShas": ["abc123def456", "789ghi012jkl"],
                 "difficulty": "medium",
-                "questionCount": 5
+                "questionCount": 5,
+                "selectedTopic": "topic_1"
             }
         }
 

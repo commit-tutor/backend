@@ -25,7 +25,8 @@ class LearningSessionService:
         self,
         commits: List[CommitDetailResponse],
         question_count: int,
-        difficulty: str
+        difficulty: str,
+        selected_topic: Optional[str] = None
     ) -> str:
         """통합 프롬프트 생성 (퀴즈 + 리뷰)"""
 
@@ -95,11 +96,48 @@ class LearningSessionService:
   }
 }"""
 
-        prompt = f"""당신은 CS 교육 전문가입니다. 아래 커밋을 보고 **관련된 CS 지식**을 묻는 퀴즈와 리뷰를 생성하세요.
+        # 주제에 따른 퀴즈 스타일 변경
+        if selected_topic:
+            # 주제가 선택된 경우: 해당 주제의 전반적인 CS 지식 학습
+            quiz_instruction = f"""
+# 선택된 학습 주제
+**{selected_topic}**
 
-# 커밋 정보
-{commits_text}
+**퀴즈 생성 방식:**
+커밋 코드는 참고만 하고, **"{selected_topic}"에 대한 전반적인 CS 지식**을 묻는 퀴즈를 생성하세요.
 
+## 퀴즈 작성 원칙
+1. **주제의 핵심 개념**을 다루세요 (커밋 코드에 국한되지 말 것)
+2. **이론적 배경과 실무 적용**을 균형있게 다루세요
+3. **일반적으로 알아야 할 지식**을 물으세요 (코드 세부사항 X)
+4. codeContext는 개념 설명을 위한 **예시 코드** (커밋과 무관해도 됨)
+
+## 좋은 예시 (주제 선택 시)
+주제: "비동기 프로그래밍" →
+질문: "JavaScript에서 Promise의 then() 체이닝이 콜백 헬(callback hell)을 해결하는 원리는?"
+codeContext: "fetch('/api/user')\\n  .then(res => res.json())\\n  .then(data => console.log(data))"
+설명: 주제의 핵심 개념 (Promise 체이닝)을 다루고, 일반적인 예시 코드 사용
+
+주제: "REST API 설계" →
+질문: "RESTful API에서 PUT과 PATCH의 차이점은?"
+codeContext: "PUT /users/123 (전체 업데이트)\\nPATCH /users/123 (부분 업데이트)"
+설명: 주제의 기본 개념을 다루고, HTTP 메서드 차이 설명
+
+## 나쁜 예시 (주제 선택 시 금지)
+❌ "이 커밋의 변수명이 바뀐 이유는?" (커밋에 집중)
+❌ "다음 코드의 버그는?" (코드 세부사항)
+❌ 커밋 코드를 그대로 codeContext로 사용 (일반적 예시를 써야 함)
+
+# 퀴즈 요구사항
+- {question_count}개의 객관식 (4지선다)
+- 난이도: {difficulty_guide.get(difficulty, '')}
+- **주제: {selected_topic}의 전반적인 개념**을 다루세요
+- **codeContext: 개념 설명을 위한 일반적 예시 코드** (커밋과 무관해도 됨, 최대 8줄)
+- 각 문제는 주제의 다른 측면을 다루세요 (중복 방지)
+"""
+        else:
+            # 주제가 선택되지 않은 경우: 커밋 코드 기반 퀴즈
+            quiz_instruction = f"""
 # 퀴즈 작성 원칙
 위 커밋의 **실제 코드**에서 사용된 기술/패턴을 보고, 그와 관련된 **CS 이론과 원리**를 물으세요.
 
@@ -117,13 +155,20 @@ codeContext: "const doubled = items.map(x => x * 2);"
 ❌ codeContext를 임의로 만든 예시 (실제 커밋 코드를 사용해야 함)
 ❌ "변경 전/변경 후" 형식 (그냥 코드만 제시)
 
-# 요구사항
-## 퀴즈 (quiz)
+# 퀴즈 요구사항
 - {question_count}개의 객관식 (4지선다)
 - 난이도: {difficulty_guide.get(difficulty, '')}
 - **실제 커밋 코드**에서 발견한 기술/개념과 **관련된 CS 원리**를 물으세요
 - **codeContext: 위 커밋의 실제 코드 조각** (해당 개념을 보여주는 부분, 최대 8줄)
 - 주제 예시: 시간복잡도, 메모리 관리, 동시성, 보안, 디자인 패턴, 알고리즘, 자료구조
+"""
+
+        prompt = f"""당신은 CS 교육 전문가입니다. 아래 커밋을 보고 **관련된 CS 지식**을 묻는 퀴즈와 리뷰를 생성하세요.
+
+# 커밋 정보
+{commits_text}
+
+{quiz_instruction}
 
 ## 리뷰 (review)
 - summary: 커밋의 핵심 변경사항 요약 (2-3문장)
@@ -137,14 +182,14 @@ codeContext: "const doubled = items.map(x => x * 2);"
 # 절대 규칙
 1. 유효한 JSON만 출력 (마크다운 금지)
 2. 질문은 **CS 이론/원리** 중심 (코드 세부사항 금지)
-3. **codeContext는 위 커밋의 실제 코드에서 가져올 것** (임의로 만들지 말 것)
+3. {"**주제 선택 시**: codeContext는 개념 설명을 위한 일반적 예시 (커밋과 무관해도 됨)" if selected_topic else "**주제 미선택 시**: codeContext는 위 커밋의 실제 코드에서 가져올 것"}
 4. **codeContext는 단일 코드 조각만** ("변경 전/후" 비교 금지)
 5. 문자열 이스케이프: \\n, \\"
 6. 변수 직접 참조 금지
 7. 오답도 교육적으로 (흔한 오개념 포함)
 
-**중요**: codeContext는 위 "커밋 정보"의 실제 코드에서 가져와야 합니다. 변경 전/후를 비교하지 말고 해당 기술을 보여주는 코드 조각만 제시하세요.
-커밋에서 사용된 기술을 보고, 관련 CS 지식을 묻는 퀴즈+리뷰를 JSON으로 생성하세요:"""
+{"**중요**: 주제에 대한 전반적인 CS 지식을 다루세요. 커밋 코드의 구체적인 내용은 무시하고, 해당 주제의 핵심 개념과 실무 적용을 학습할 수 있는 퀴즈를 만드세요." if selected_topic else "**중요**: codeContext는 위 '커밋 정보'의 실제 코드에서 가져와야 합니다. 변경 전/후를 비교하지 말고 해당 기술을 보여주는 코드 조각만 제시하세요."}
+{"주제 '" + selected_topic + "'에 대한 교육적 퀴즈+리뷰를 JSON으로 생성하세요:" if selected_topic else "커밋에서 사용된 기술을 보고, 관련 CS 지식을 묻는 퀴즈+리뷰를 JSON으로 생성하세요:"}"""
 
         return prompt
 
@@ -152,7 +197,8 @@ codeContext: "const doubled = items.map(x => x * 2);"
         self,
         commits: List[CommitDetailResponse],
         question_count: int = 5,
-        difficulty: str = "medium"
+        difficulty: str = "medium",
+        selected_topic: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         퀴즈와 코드 리뷰를 한 번에 생성
@@ -161,15 +207,17 @@ codeContext: "const doubled = items.map(x => x * 2);"
             commits: 커밋 상세 정보 목록
             question_count: 생성할 퀴즈 개수
             difficulty: 난이도
+            selected_topic: 선택된 주제 제목 (선택 시 해당 주제에 집중)
 
         Returns:
             {"quiz": QuizGenerationResponse, "review": AIAnalysisResponse}
         """
         try:
-            logger.info(f"[LearningSession] 통합 생성 시작: {len(commits)}개 커밋, 난이도: {difficulty}")
+            topic_info = f", 주제: {selected_topic}" if selected_topic else ""
+            logger.info(f"[LearningSession] 통합 생성 시작: {len(commits)}개 커밋, 난이도: {difficulty}{topic_info}")
 
             # 통합 프롬프트 구성
-            prompt = self._build_unified_prompt(commits, question_count, difficulty)
+            prompt = self._build_unified_prompt(commits, question_count, difficulty, selected_topic)
             logger.info(f"[LearningSession] 프롬프트 길이: {len(prompt)} 문자")
 
             # Gemini API 단일 호출
