@@ -17,15 +17,21 @@ logger = logging.getLogger(__name__)
 
 
 class GeminiService:
-    """OpenRouter API를 통한 Gemini 2.0 Flash Experimental 통신 서비스"""
+    """OpenRouter API를 통한 AI 모델 통신 서비스"""
 
-    def __init__(self):
-        """OpenRouter API 초기화"""
+    def __init__(self, model_name: Optional[str] = None):
+        """
+        OpenRouter API 초기화
+        
+        Args:
+            model_name: 사용할 모델명 (None이면 기본 모델 사용)
+        """
         if not settings.OPENROUTER_API_KEY:
             logger.warning("OPENROUTER_API_KEY가 설정되지 않았습니다.")
             self.is_configured = False
             self.api_url = None
             self.headers = None
+            self.model_name = None
         else:
             # OpenRouter API 설정
             self.api_url = "https://openrouter.ai/api/v1/chat/completions"
@@ -33,7 +39,8 @@ class GeminiService:
                 "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
                 "Content-Type": "application/json"
             }
-            self.model_name = "openai/gpt-oss-120b:free"
+            # 모델 설정 (파라미터로 전달되지 않으면 퀴즈 모델을 기본값으로)
+            self.model_name = model_name or settings.OPENROUTER_QUIZ_MODEL
             self.is_configured = True
             logger.info(f"OpenRouter API 초기화 완료 (모델: {self.model_name})")
 
@@ -215,12 +222,29 @@ class GeminiService:
             raise ValueError(f"Gemini API 응답을 JSON으로 파싱할 수 없습니다: {str(e)}")
 
 
-# 싱글톤 인스턴스
+# 싱글톤 인스턴스 (기본 모델용)
 _gemini_service: Optional[GeminiService] = None
 
 
-def get_gemini_service() -> GeminiService:
-    """GeminiService 싱글톤 인스턴스 반환"""
+def get_gemini_service(model_name: Optional[str] = None) -> GeminiService:
+    """
+    GeminiService 인스턴스 반환
+    
+    Args:
+        model_name: 사용할 모델명 (None이면 싱글톤 기본 인스턴스 반환)
+        
+    Returns:
+        GeminiService 인스턴스
+        
+    Note:
+        model_name이 지정되면 새 인스턴스를 생성하여 반환합니다.
+        model_name이 None이면 싱글톤 인스턴스를 반환합니다.
+    """
+    if model_name is not None:
+        # 특정 모델을 위한 새 인스턴스 생성
+        return GeminiService(model_name=model_name)
+    
+    # 기본 싱글톤 인스턴스
     global _gemini_service
     if _gemini_service is None:
         _gemini_service = GeminiService()

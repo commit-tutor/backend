@@ -38,9 +38,13 @@ class Settings(BaseSettings):
     
     # OpenRouter Settings
     OPENROUTER_API_KEY: str = ""
-    # 현재 모델: tngtech/deepseek-r1t2-chimera:free (안정적인 무료 모델)
-    # 다른 옵션: google/gemini-flash-1.5, google/gemini-2.0-flash-exp:free
-    OPENROUTER_MODEL: str = "tngtech/deepseek-r1t2-chimera:free"
+    
+    # 모델 설정
+    # 주제 생성용 모델 (창의적인 주제 추출에 적합)
+    OPENROUTER_TOPIC_MODEL: str = "openai/gpt-oss-120b:free"
+    
+    # 퀴즈 생성용 모델 (구조화된 퀴즈 생성에 적합)
+    OPENROUTER_QUIZ_MODEL: str = "tngtech/deepseek-r1t2-chimera:free"
 
     model_config = SettingsConfigDict(
         env_file=".env",

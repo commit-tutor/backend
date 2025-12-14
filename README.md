@@ -39,9 +39,13 @@ GITHUB_CLIENT_SECRET=your_github_client_secret
 GITHUB_REDIRECT_URI=http://localhost:5174/auth/callback
 FRONTEND_URL=http://localhost:5174
 
-# OpenRouter API (for Gemini 2.0 Flash Experimental - Free)
+# OpenRouter API (Free AI Models)
 # Get your API key at: https://openrouter.ai/keys
 OPENROUTER_API_KEY=sk-or-v1-your-api-key-here
+
+# AI 모델 설정 (선택사항 - 기본값 사용)
+OPENROUTER_TOPIC_MODEL=openai/gpt-oss-120b:free  # 주제 생성용
+OPENROUTER_QUIZ_MODEL=tngtech/deepseek-r1t2-chimera:free  # 퀴즈 생성용
 
 # Database (optional)
 DATABASE_URL=postgresql+asyncpg://user:password@localhost/commit_tutor
@@ -53,6 +57,11 @@ DATABASE_URL=postgresql+asyncpg://user:password@localhost/commit_tutor
 2. 계정 생성 (무료)
 3. https://openrouter.ai/keys 에서 API 키 발급
 4. 발급받은 키를 `.env` 파일의 `OPENROUTER_API_KEY`에 설정
+
+**사용 중인 AI 모델:**
+
+- **주제 생성**: `openai/gpt-oss-120b:free` - 창의적인 주제 추출에 최적화
+- **퀴즈 생성**: `tngtech/deepseek-r1t2-chimera:free` - 구조화된 퀴즈 생성에 최적화
 
 ### 4. 서버 실행
 

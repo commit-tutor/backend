@@ -10,6 +10,7 @@ from datetime import datetime
 from app.services.gemini_service import get_gemini_service
 from app.schemas.quiz import LearningTopicResponse, TopicExtractionResponse
 from app.schemas.analysis import CommitDetailResponse
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +19,10 @@ class TopicGenerator:
     """커밋에서 학습 주제를 생성하는 서비스"""
 
     def __init__(self):
-        self.gemini_service = get_gemini_service()
+        # 주제 생성용 모델 사용
+        self.gemini_service = get_gemini_service(model_name=settings.OPENROUTER_TOPIC_MODEL)
         self._max_patch_preview_length = 1200
+        logger.info(f"TopicGenerator 초기화 (모델: {settings.OPENROUTER_TOPIC_MODEL})")
 
     def _build_topic_prompt(
         self,
