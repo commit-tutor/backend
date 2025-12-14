@@ -91,10 +91,25 @@ class Settings(BaseSettings):
         """
         데이터베이스 연결 URL 생성
         개별 설정이 있으면 사용하고, 없으면 DATABASE_URL 사용
+        환경 변수가 설정되지 않은 경우 명확한 에러 발생
         """
+        # 개별 DB 설정이 모두 있는 경우
         if self.DB_USER and self.DB_PASSWORD and self.DB_HOST:
             return f"postgresql+psycopg2://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}?sslmode=require"
-        return self.DATABASE_URL
+        
+        # DATABASE_URL 사용
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
+        
+        # 환경 변수가 하나도 설정되지 않은 경우 명확한 에러
+        raise ValueError(
+            "Database configuration is missing. Please set either:\n"
+            "1. Individual variables: DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME\n"
+            "2. Or DATABASE_URL\n"
+            "\n"
+            "For Vercel deployment, set these in: Dashboard > Settings > Environment Variables\n"
+            "See VERCEL_DEPLOYMENT.md for detailed instructions."
+        )
 
     # Security Settings
     SECRET_KEY: str = "your-secret-key-change-this-in-production"
