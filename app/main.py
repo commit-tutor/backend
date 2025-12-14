@@ -10,12 +10,22 @@ app = FastAPI(
 )
 
 # CORS 설정
+# 프로덕션 환경에서도 안전하게 동작하도록 설정
+cors_origins = settings.cors_origins
+
+# 디버깅을 위한 로그
+import logging
+logger = logging.getLogger(__name__)
+logger.info(f"CORS allowed origins: {cors_origins}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.BACKEND_CORS_ORIGINS,
+    allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,  # preflight 요청 캐시 시간 (1시간)
 )
 
 # API 라우터 등록

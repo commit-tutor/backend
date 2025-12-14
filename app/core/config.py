@@ -1,6 +1,9 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import List
+from pydantic import field_validator
+from typing import List, Union, Any
 from functools import lru_cache
+import os
+import json
 
 
 class Settings(BaseSettings):
@@ -10,11 +13,55 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
 
     # CORS Settings
-    BACKEND_CORS_ORIGINS: List[str] = [
+    # 환경 변수에서 쉼표로 구분된 문자열, JSON 배열, 또는 리스트로 받을 수 있음
+    # 기본값: 개발 및 프로덕션 환경 모두 포함
+    BACKEND_CORS_ORIGINS: Union[List[str], str] = [
         "http://localhost:5174",
         "http://localhost:5173",
         "https://commit-tutor.vercel.app",
     ]
+    
+    @field_validator('BACKEND_CORS_ORIGINS', mode='before')
+    @classmethod
+    def parse_cors_origins(cls, v: Any) -> Union[List[str], str]:
+        """환경 변수에서 받은 값을 그대로 반환 (나중에 파싱)"""
+        return v
+    
+    def _parse_cors_origins(self) -> List[str]:
+        """CORS origins를 파싱하여 리스트로 반환"""
+        origins = self.BACKEND_CORS_ORIGINS
+        
+        # 이미 리스트인 경우
+        if isinstance(origins, list):
+            return origins
+        
+        # 문자열인 경우 파싱
+        if isinstance(origins, str):
+            # JSON 배열인 경우
+            if origins.strip().startswith('['):
+                try:
+                    parsed = json.loads(origins)
+                    if isinstance(parsed, list):
+                        return parsed
+                except json.JSONDecodeError:
+                    pass
+            
+            # 쉼표로 구분된 문자열인 경우
+            parsed_list = [origin.strip() for origin in origins.split(',') if origin.strip()]
+            if parsed_list:
+                return parsed_list
+        
+        # 기본값 반환
+        return [
+            "http://localhost:5174",
+            "http://localhost:5173",
+            "https://commit-tutor.vercel.app",
+        ]
+    
+    @property
+    def cors_origins(self) -> List[str]:
+        """파싱된 CORS origins 반환"""
+        return self._parse_cors_origins()
 
     # Database Settings
     DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost/commit_tutor"
