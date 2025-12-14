@@ -2,7 +2,7 @@
 from fastapi import Header, HTTPException, status, Depends
 from jose import jwt, JWTError
 from typing import Optional
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.core.config import settings
@@ -10,7 +10,7 @@ from app.db.database import get_db
 from app.models.user import User
 
 
-async def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
+def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
     """
     JWT 토큰에서 현재 사용자 ID를 추출합니다.
 
@@ -66,7 +66,7 @@ async def get_current_user_id(authorization: Optional[str] = Header(None)) -> st
         raise credentials_exception
 
 
-async def get_github_access_token(authorization: Optional[str] = Header(None)) -> str:
+def get_github_access_token(authorization: Optional[str] = Header(None)) -> str:
     """
     JWT 토큰에서 GitHub Access Token을 추출합니다.
 
@@ -125,9 +125,9 @@ async def get_github_access_token(authorization: Optional[str] = Header(None)) -
         )
 
 
-async def get_current_user(
+def get_current_user(
     authorization: Optional[str] = Header(None),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ) -> User:
     """
     JWT 토큰에서 현재 사용자를 가져옵니다.
@@ -182,8 +182,8 @@ async def get_current_user(
 
         github_id = int(github_id_str)
 
-        # 데이터베이스에서 사용자 조회
-        result = await db.execute(
+        # 데이터베이스에서 사용자 조회 (동기 방식)
+        result = db.execute(
             select(User).where(User.github_id == github_id)
         )
         user = result.scalar_one_or_none()
@@ -198,8 +198,8 @@ async def get_current_user(
                 needs_onboarding=True
             )
             db.add(user)
-            await db.commit()
-            await db.refresh(user)
+            db.commit()
+            db.refresh(user)
 
         return user
 

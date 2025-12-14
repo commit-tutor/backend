@@ -1,12 +1,40 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 from app.api.v1 import api_router
 from app.core.config import settings
+from app.db.database import test_connection
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    애플리케이션 시작 및 종료 시 실행되는 이벤트
+    """
+    # Startup
+    logger.info("🚀 Starting Commit Tutor API...")
+    logger.info(f"📊 Database URL: {settings.database_url.split('@')[1] if '@' in settings.database_url else 'Not configured'}")
+    
+    # 데이터베이스 연결 테스트
+    if test_connection():
+        logger.info("✅ Database connection verified")
+    else:
+        logger.warning("⚠️  Database connection failed - check your .env settings")
+    
+    yield
+    
+    # Shutdown
+    logger.info("👋 Shutting down Commit Tutor API...")
+
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json"
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    lifespan=lifespan
 )
 
 # CORS 설정

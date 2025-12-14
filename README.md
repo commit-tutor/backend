@@ -30,6 +30,17 @@ pip install -r requirements.txt
 `.env` 파일을 생성하고 다음 환경변수를 설정하세요:
 
 ```bash
+# Database Configuration (Supabase PostgreSQL - Session Pooler)
+# 방법 1: 개별 설정 (권장 - Session Pooler 사용)
+DB_USER=postgres.mdqpzwhhbpmcvcxvjhld
+DB_PASSWORD=your_supabase_password_here
+DB_HOST=aws-1-ap-northeast-1.pooler.supabase.com
+DB_PORT=5432
+DB_NAME=postgres
+
+# 방법 2: 전체 URL 사용 (위의 개별 설정이 우선순위)
+# DATABASE_URL=postgresql+psycopg2://postgres.mdqpzwhhbpmcvcxvjhld:password@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres?sslmode=require
+
 # Security
 SECRET_KEY=your-secret-key-change-this-in-production
 
@@ -47,9 +58,31 @@ OPENROUTER_API_KEY=sk-or-v1-your-api-key-here
 OPENROUTER_TOPIC_MODEL=openai/gpt-oss-120b:free  # 주제 생성용
 OPENROUTER_QUIZ_MODEL=tngtech/deepseek-r1t2-chimera:free  # 퀴즈 생성용
 
-# Database (optional)
-DATABASE_URL=postgresql+asyncpg://user:password@localhost/commit_tutor
+# Debug Mode
+DEBUG=True
 ```
+
+**Supabase 데이터베이스 설정 방법 (Session Pooler):**
+
+1. Supabase 대시보드 (https://supabase.com/dashboard) 접속
+2. 프로젝트 선택 → Settings → Database
+3. Connection string 섹션에서 **"Session Pooler"** 선택
+4. User, Password, Host 정보를 `.env` 파일에 입력
+   - User: `postgres.{프로젝트ID}` 형식
+   - Host: `aws-{region}.pooler.supabase.com` 형식
+
+**Session Pooler 장점:**
+- 서버 측에서 연결 풀링 관리
+- 동시 연결 수 최적화
+- 더 나은 성능과 안정성
+
+**데이터베이스 연결 테스트:**
+
+```bash
+python test_db_connection.py
+```
+
+이 스크립트는 데이터베이스 연결 상태, PostgreSQL 버전, 기존 테이블 목록을 확인합니다.
 
 **OpenRouter API 키 발급 방법:**
 

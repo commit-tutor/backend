@@ -4,7 +4,7 @@
 """
 
 from fastapi import APIRouter, HTTPException, status, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from sqlalchemy import select, func, desc
 from typing import Optional
 import logging
@@ -28,10 +28,10 @@ router = APIRouter()
 
 
 @router.post("", response_model=QuizResponse, status_code=status.HTTP_201_CREATED)
-async def save_quiz(
+def save_quiz(
     request: QuizSaveRequest,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     퀴즈 저장 (생성)
@@ -55,8 +55,8 @@ async def save_quiz(
         )
         
         db.add(quiz)
-        await db.commit()
-        await db.refresh(quiz)
+        db.commit()
+        db.refresh(quiz)
         
         logger.info(f"[퀴즈 저장] 퀴즈 ID {quiz.id} 저장 완료")
         
@@ -64,7 +64,7 @@ async def save_quiz(
         
     except Exception as e:
         logger.error(f"[퀴즈 저장] 오류: {str(e)}")
-        await db.rollback()
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"퀴즈 저장 중 오류가 발생했습니다: {str(e)}"
@@ -72,12 +72,12 @@ async def save_quiz(
 
 
 @router.get("", response_model=QuizListResponse)
-async def get_my_quizzes(
+def get_my_quizzes(
     is_completed: Optional[bool] = Query(None, description="완료 여부 필터 (true: 완료, false: 미완료, null: 전체)"),
     limit: int = Query(50, ge=1, le=100, description="최대 조회 개수"),
     offset: int = Query(0, ge=0, description="시작 위치"),
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     나의 퀴즈 목록 조회
@@ -101,19 +101,19 @@ async def get_my_quizzes(
         query = query.limit(limit).offset(offset)
         
         # 퀴즈 목록 조회
-        result = await db.execute(query)
+        result = db.execute(query)
         quizzes = result.scalars().all()
         
         # 통계 조회
         total_query = select(func.count(Quiz.id)).where(Quiz.user_id == current_user.id)
-        total_result = await db.execute(total_query)
+        total_result = db.execute(total_query)
         total = total_result.scalar()
         
         completed_query = select(func.count(Quiz.id)).where(
             Quiz.user_id == current_user.id,
             Quiz.is_completed == True
         )
-        completed_result = await db.execute(completed_query)
+        completed_result = db.execute(completed_query)
         completed = completed_result.scalar()
         
         pending = total - completed
@@ -136,10 +136,10 @@ async def get_my_quizzes(
 
 
 @router.get("/{quiz_id}", response_model=QuizResponse)
-async def get_quiz_by_id(
+def get_quiz_by_id(
     quiz_id: int,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     특정 퀴즈 상세 조회
@@ -147,7 +147,7 @@ async def get_quiz_by_id(
     try:
         logger.info(f"[퀴즈 상세 조회] 사용자 {current_user.username}이(가) 퀴즈 ID {quiz_id} 조회")
         
-        result = await db.execute(
+        result = db.execute(
             select(Quiz).where(
                 Quiz.id == quiz_id,
                 Quiz.user_id == current_user.id
@@ -174,11 +174,11 @@ async def get_quiz_by_id(
 
 
 @router.post("/{quiz_id}/submit", response_model=QuizSubmitResponse)
-async def submit_quiz(
+def submit_quiz(
     quiz_id: int,
     request: QuizSubmitRequest,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     퀴즈 제출 및 채점
@@ -189,7 +189,7 @@ async def submit_quiz(
         logger.info(f"[퀴즈 제출] 사용자 {current_user.username}이(가) 퀴즈 ID {quiz_id} 제출")
         
         # 퀴즈 조회
-        result = await db.execute(
+        result = db.execute(
             select(Quiz).where(
                 Quiz.id == quiz_id,
                 Quiz.user_id == current_user.id
@@ -261,8 +261,8 @@ async def submit_quiz(
         )
         
         db.add(attempt)
-        await db.commit()
-        await db.refresh(quiz)
+        db.commit()
+        db.refresh(quiz)
         
         logger.info(f"[퀴즈 저장] QuizAttempt 기록 생성 완료 (ID: {attempt.id})")
         logger.info(f"[퀴즈 제출] 채점 및 저장 완료 - 점수: {score}점 (정답: {correct_answers}/{total_questions})")
@@ -291,7 +291,7 @@ async def submit_quiz(
         raise
     except Exception as e:
         logger.error(f"[퀴즈 제출] 오류: {str(e)}")
-        await db.rollback()
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"퀴즈 제출 중 오류가 발생했습니다: {str(e)}"
@@ -299,10 +299,10 @@ async def submit_quiz(
 
 
 @router.delete("/{quiz_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_quiz(
+def delete_quiz(
     quiz_id: int,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     퀴즈 삭제
@@ -310,7 +310,7 @@ async def delete_quiz(
     try:
         logger.info(f"[퀴즈 삭제] 사용자 {current_user.username}이(가) 퀴즈 ID {quiz_id} 삭제 요청")
         
-        result = await db.execute(
+        result = db.execute(
             select(Quiz).where(
                 Quiz.id == quiz_id,
                 Quiz.user_id == current_user.id
@@ -324,8 +324,8 @@ async def delete_quiz(
                 detail="퀴즈를 찾을 수 없습니다."
             )
         
-        await db.delete(quiz)
-        await db.commit()
+        db.delete(quiz)
+        db.commit()
         
         logger.info(f"[퀴즈 삭제] 퀴즈 ID {quiz_id} 삭제 완료")
         
@@ -333,7 +333,7 @@ async def delete_quiz(
         raise
     except Exception as e:
         logger.error(f"[퀴즈 삭제] 오류: {str(e)}")
-        await db.rollback()
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"퀴즈 삭제 중 오류가 발생했습니다: {str(e)}"

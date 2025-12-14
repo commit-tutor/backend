@@ -5,7 +5,7 @@
 import logging
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from sqlalchemy import select, desc
 from sqlalchemy.orm import selectinload
 
@@ -22,10 +22,10 @@ router = APIRouter()
 
 
 @router.post("/generate", response_model=ReviewResponse)
-async def generate_review(
+def generate_review(
     request: ReviewGenerateRequest,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     퀴즈 결과 기반 복습 자료 생성
@@ -36,7 +36,7 @@ async def generate_review(
         logger.info(f"[복습 자료 생성] 사용자 {current_user.username}이(가) 퀴즈 ID {request.quiz_id} 복습 자료 생성 요청")
         
         # 퀴즈 조회 (attempts를 eager loading)
-        result = await db.execute(
+        result = db.execute(
             select(Quiz)
             .options(selectinload(Quiz.attempts))
             .where(
@@ -59,7 +59,7 @@ async def generate_review(
             )
         
         # 이미 생성된 복습 자료가 있는지 확인
-        existing_review = await db.execute(
+        existing_review = db.execute(
             select(Review).where(
                 Review.quiz_id == request.quiz_id,
                 Review.user_id == current_user.id
@@ -79,7 +79,7 @@ async def generate_review(
         
         # 최근 시도 기록에서 사용자 답안 가져오기
         # 별도 쿼리로 최신 attempt 조회
-        latest_attempt_result = await db.execute(
+        latest_attempt_result = db.execute(
             select(QuizAttempt)
             .where(QuizAttempt.quiz_id == request.quiz_id)
             .order_by(desc(QuizAttempt.created_at))
@@ -95,15 +95,18 @@ async def generate_review(
         
         user_answers = latest_attempt.user_answers.get("answers", {})
         
-        # AI 복습 자료 생성
+        # AI 복습 자료 생성 (동기 호출)
         review_generator = get_review_generator()
-        review_data = await review_generator.generate_review(
+        # review_generator.generate_review가 async인 경우 동기로 변경해야 함
+        # 여기서는 임시로 import asyncio를 사용하거나, generate_review를 동기 함수로 변경
+        import asyncio
+        review_data = asyncio.run(review_generator.generate_review(
             quiz_title=quiz.title,
             quiz_topic=quiz.selected_topic,
             questions=quiz.questions,
             user_answers=user_answers,
             score=quiz.score or 0
-        )
+        ))
         
         logger.info(f"[복습 자료 생성] AI 생성 완료: {review_data.get('title')}")
         
@@ -119,8 +122,8 @@ async def generate_review(
         )
         
         db.add(review)
-        await db.commit()
-        await db.refresh(review)
+        db.commit()
+        db.refresh(review)
         
         logger.info(f"[복습 자료 생성] DB 저장 완료 (ID: {review.id})")
         
@@ -136,7 +139,7 @@ async def generate_review(
         raise
     except Exception as e:
         logger.error(f"[복습 자료 생성] 오류: {str(e)}")
-        await db.rollback()
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"복습 자료 생성 중 오류가 발생했습니다: {str(e)}"
@@ -144,11 +147,11 @@ async def generate_review(
 
 
 @router.get("", response_model=ReviewListResponse)
-async def get_my_reviews(
+def get_my_reviews(
     skip: int = 0,
     limit: int = 50,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     나의 복습 자료 목록 조회
@@ -159,7 +162,7 @@ async def get_my_reviews(
         logger.info(f"[복습 자료 목록] 사용자 {current_user.username}의 복습 자료 조회")
         
         # 복습 자료 조회 (최신순)
-        result = await db.execute(
+        result = db.execute(
             select(Review)
             .where(Review.user_id == current_user.id)
             .order_by(desc(Review.created_at))
@@ -171,7 +174,7 @@ async def get_my_reviews(
         # 퀴즈 정보 포함하여 반환
         reviews_with_quiz = []
         for review in reviews:
-            quiz_result = await db.execute(
+            quiz_result = db.execute(
                 select(Quiz).where(Quiz.id == review.quiz_id)
             )
             quiz = quiz_result.scalar_one_or_none()
@@ -187,7 +190,7 @@ async def get_my_reviews(
             )
         
         # 전체 개수 조회
-        count_result = await db.execute(
+        count_result = db.execute(
             select(Review).where(Review.user_id == current_user.id)
         )
         total = len(count_result.scalars().all())
@@ -208,10 +211,10 @@ async def get_my_reviews(
 
 
 @router.get("/{review_id}", response_model=ReviewResponse)
-async def get_review_detail(
+def get_review_detail(
     review_id: int,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     복습 자료 상세 조회
@@ -219,7 +222,7 @@ async def get_review_detail(
     try:
         logger.info(f"[복습 자료 상세] 사용자 {current_user.username}이(가) 복습 자료 ID {review_id} 조회")
         
-        result = await db.execute(
+        result = db.execute(
             select(Review).where(
                 Review.id == review_id,
                 Review.user_id == current_user.id
@@ -234,7 +237,7 @@ async def get_review_detail(
             )
         
         # 퀴즈 정보 포함
-        quiz_result = await db.execute(
+        quiz_result = db.execute(
             select(Quiz).where(Quiz.id == review.quiz_id)
         )
         quiz = quiz_result.scalar_one_or_none()
@@ -258,10 +261,10 @@ async def get_review_detail(
 
 
 @router.delete("/{review_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_review(
+def delete_review(
     review_id: int,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
     """
     복습 자료 삭제
@@ -269,7 +272,7 @@ async def delete_review(
     try:
         logger.info(f"[복습 자료 삭제] 사용자 {current_user.username}이(가) 복습 자료 ID {review_id} 삭제 요청")
         
-        result = await db.execute(
+        result = db.execute(
             select(Review).where(
                 Review.id == review_id,
                 Review.user_id == current_user.id
@@ -283,8 +286,8 @@ async def delete_review(
                 detail="복습 자료를 찾을 수 없습니다."
             )
         
-        await db.delete(review)
-        await db.commit()
+        db.delete(review)
+        db.commit()
         
         logger.info(f"[복습 자료 삭제] 복습 자료 ID {review_id} 삭제 완료")
         
@@ -292,7 +295,7 @@ async def delete_review(
         raise
     except Exception as e:
         logger.error(f"[복습 자료 삭제] 오류: {str(e)}")
-        await db.rollback()
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"복습 자료 삭제 중 오류가 발생했습니다: {str(e)}"
