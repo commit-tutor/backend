@@ -5,6 +5,7 @@
 
 from typing import List, Optional
 import logging
+import random
 from datetime import datetime
 
 from app.services.gemini_service import get_gemini_service
@@ -232,7 +233,7 @@ codeContext: null
             if "questions" not in response_data:
                 raise ValueError("응답에 'questions' 필드가 없습니다.")
 
-            # 퀴즈 파싱
+            # 퀴즈 파싱 및 선택지 랜덤 섞기
             questions = []
             for idx, q_data in enumerate(response_data["questions"]):
                 try:
@@ -242,6 +243,29 @@ codeContext: null
                     # 타입 정규화
                     q_type = str(q_data.get("type", "multiple")).lower()
                     q_data["type"] = q_type
+
+                    # 객관식 문제의 경우 선택지를 랜덤하게 섞기
+                    if q_type == "multiple" and "options" in q_data and q_data["options"]:
+                        options = q_data["options"]
+                        correct_answer = q_data.get("correctAnswer", 0)
+                        
+                        # 정답이 인덱스인 경우 (숫자)
+                        if isinstance(correct_answer, int):
+                            # 정답 텍스트 저장
+                            correct_text = options[correct_answer] if 0 <= correct_answer < len(options) else options[0]
+                            
+                            # 선택지 섞기
+                            shuffled_options = options.copy()
+                            random.shuffle(shuffled_options)
+                            
+                            # 새로운 정답 인덱스 찾기
+                            new_correct_index = shuffled_options.index(correct_text)
+                            
+                            # 업데이트
+                            q_data["options"] = shuffled_options
+                            q_data["correctAnswer"] = new_correct_index
+                            
+                            logger.debug(f"문제 {idx + 1}: 선택지 섞기 완료 (정답: {correct_answer} -> {new_correct_index})")
 
                     question = QuizQuestionResponse(**q_data)
                     questions.append(question)
