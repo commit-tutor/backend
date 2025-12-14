@@ -52,6 +52,7 @@ class Quiz(Base):
     # 관계
     user = relationship("User", back_populates="quizzes")
     attempts = relationship("QuizAttempt", back_populates="quiz", cascade="all, delete-orphan")
+    reviews = relationship("Review", back_populates="quiz", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Quiz(id={self.id}, title={self.title}, completed={self.is_completed})>"

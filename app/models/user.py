@@ -26,6 +26,7 @@ class User(Base):
 
     # 관계
     quizzes = relationship("Quiz", back_populates="user", cascade="all, delete-orphan")
+    reviews = relationship("Review", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User(id={self.id}, username={self.username})>"

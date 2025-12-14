@@ -23,7 +23,7 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 from app.db.database import Base
 from app.core.config import settings
-from app.models import User, Quiz, QuizAttempt  # 모든 모델 import
+from app.models import User, Quiz, QuizAttempt, Review  # 모든 모델 import
 
 target_metadata = Base.metadata
 
