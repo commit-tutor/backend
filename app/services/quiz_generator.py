@@ -28,16 +28,9 @@ class QuizGenerator:
         self,
         commits: List[CommitDetailResponse],
         question_count: int,
-        difficulty: str,
         selected_topic: Optional[str] = None
     ) -> str:
         """퀴즈 생성 프롬프트 구성"""
-
-        difficulty_guide = {
-            "easy": "기본적인 CS 개념과 프로그래밍 원리",
-            "medium": "설계 패턴, 알고리즘, 데이터 구조의 실제 적용",
-            "hard": "성능 최적화, 시스템 설계, 보안 원칙"
-        }
 
         # 커밋 정보 요약
         commits_summary = []
@@ -136,7 +129,6 @@ codeContext: null
 
 # 퀴즈 요구사항
 - {question_count}개의 객관식 (4지선다)
-- 난이도: {difficulty_guide.get(difficulty, '')}
 - **주제: {selected_topic}의 전반적인 개념**을 다루세요
 - **codeContext: 코드가 개념 이해에 필수적인 경우에만 포함** (불필요하면 null 또는 생략, 최대 8줄)
 - 각 문제는 주제의 다른 측면을 다루세요 (중복 방지)
@@ -171,7 +163,6 @@ codeContext: null
 
 # 퀴즈 요구사항
 - {question_count}개의 객관식 (4지선다)
-- 난이도: {difficulty_guide.get(difficulty, '')}
 - **실제 커밋 코드**에서 발견한 기술/개념과 **관련된 CS 원리**를 물으세요
 - **codeContext: 코드가 개념 이해에 필수적인 경우에만 포함** (불필요하면 null 또는 생략, 최대 8줄)
 - 주제 예시: 시간복잡도, 메모리 관리, 동시성, 보안, 디자인 패턴, 알고리즘, 자료구조
@@ -206,7 +197,6 @@ codeContext: null
         self,
         commits: List[CommitDetailResponse],
         question_count: int = 5,
-        difficulty: str = "medium",
         selected_topic: Optional[str] = None
     ) -> QuizGenerationResponse:
         """
@@ -215,7 +205,6 @@ codeContext: null
         Args:
             commits: 커밋 상세 정보 목록
             question_count: 생성할 퀴즈 개수
-            difficulty: 난이도 (easy, medium, hard)
             selected_topic: 선택된 주제 제목 (선택 시 해당 주제에 집중)
 
         Returns:
@@ -223,10 +212,10 @@ codeContext: null
         """
         try:
             topic_info = f", 주제: {selected_topic}" if selected_topic else ""
-            logger.info(f"[QuizGenerator] 퀴즈 생성 시작: {len(commits)}개 커밋, 난이도: {difficulty}{topic_info}")
+            logger.info(f"[QuizGenerator] 퀴즈 생성 시작: {len(commits)}개 커밋{topic_info}")
 
             # 프롬프트 구성
-            prompt = self._build_quiz_prompt(commits, question_count, difficulty, selected_topic)
+            prompt = self._build_quiz_prompt(commits, question_count, selected_topic)
             logger.info(f"[QuizGenerator] 프롬프트 길이: {len(prompt)} 문자")
 
             # Gemini API 호출
@@ -266,7 +255,6 @@ codeContext: null
                     "totalCommits": len(commits),
                     "requestedCount": question_count,
                     "generatedCount": len(questions),
-                    "difficulty": difficulty,
                     "generatedAt": datetime.utcnow().isoformat()
                 }
             )

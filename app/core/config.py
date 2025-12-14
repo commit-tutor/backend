@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     
     # 모델 설정
     # 주제 생성용 모델 (창의적인 주제 추출에 적합)
-    OPENROUTER_TOPIC_MODEL: str = "openai/gpt-oss-120b:free"
+    OPENROUTER_TOPIC_MODEL: str = "openai/gpt-oss-20b:free"
     
     # 퀴즈 생성용 모델 (구조화된 퀴즈 생성에 적합)
     OPENROUTER_QUIZ_MODEL: str = "tngtech/deepseek-r1t2-chimera:free"

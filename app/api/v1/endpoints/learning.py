@@ -29,7 +29,7 @@ async def generate_learning_topics(
     - commitShas: 분석할 커밋 SHA 목록 (형식: "owner/repo:sha" 또는 "repo_id:sha")
 
     **응답:**
-    - topics: 생성된 학습 주제 목록 (id, title, description, difficulty, keywords)
+    - topics: 생성된 학습 주제 목록 (id, title, description, keywords)
     - metadata: 메타데이터 (총 커밋 수, 생성 시간 등)
 
     이 엔드포인트는 커밋의 코드 변경사항을 분석하여 학습 가능한 CS 주제를 생성합니다.
@@ -116,7 +116,6 @@ async def generate_learning_session(
 
     **요청 본문:**
     - commitShas: 분석할 커밋 SHA 목록 (형식: "owner/repo:sha" 또는 "repo_id:sha")
-    - difficulty: 난이도 (easy, medium, hard)
     - questionCount: 생성할 퀴즈 개수 (3-10)
     - selectedTopic: 선택된 주제 (선택 시 해당 주제의 전반적 CS 지식 학습)
 
@@ -129,7 +128,7 @@ async def generate_learning_session(
     try:
         logger.info(f"========== 통합 학습 세션 API 요청 ==========")
         logger.info(f"요청 데이터: {request.dict()}")
-        logger.info(f"커밋 개수: {len(request.commitShas)}, 난이도: {request.difficulty}")
+        logger.info(f"커밋 개수: {len(request.commitShas)}, 문제 수: {request.questionCount}")
 
         # 커밋 상세 정보 수집
         commits_details = []

@@ -102,10 +102,6 @@ class TopicExtractionResponse(BaseModel):
 class QuizGenerationRequest(BaseModel):
     """퀴즈 생성 요청 스키마"""
     commitShas: List[str] = Field(..., description="퀴즈를 생성할 커밋 SHA 목록", min_length=1)
-    difficulty: Optional[Literal["easy", "medium", "hard"]] = Field(
-        "medium",
-        description="퀴즈 난이도"
-    )
     questionCount: Optional[int] = Field(
         5,
         description="생성할 퀴즈 개수 (기본: 5개)",
@@ -121,7 +117,6 @@ class QuizGenerationRequest(BaseModel):
         json_schema_extra = {
             "example": {
                 "commitShas": ["abc123def456", "789ghi012jkl"],
-                "difficulty": "medium",
                 "questionCount": 5,
                 "selectedTopic": "topic_1"
             }
