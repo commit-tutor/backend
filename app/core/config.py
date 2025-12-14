@@ -14,12 +14,20 @@ class Settings(BaseSettings):
 
     # CORS Settings
     # 환경 변수에서 쉼표로 구분된 문자열, JSON 배열, 또는 리스트로 받을 수 있음
-    # 기본값: 개발 및 프로덕션 환경 모두 포함
+    # 개발 환경: ["*"] (모든 origin 허용)
+    # 프로덕션 환경: 구체적인 origin 리스트
     BACKEND_CORS_ORIGINS: Union[List[str], str] = [
         "http://localhost:5174",
         "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5174",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
         "https://commit-tutor.vercel.app",
     ]
+    
+    # 개발 모드 여부 (환경 변수로 제어 가능)
+    DEBUG: bool = True
     
     @field_validator('BACKEND_CORS_ORIGINS', mode='before')
     @classmethod
@@ -51,10 +59,14 @@ class Settings(BaseSettings):
             if parsed_list:
                 return parsed_list
         
-        # 기본값 반환
+        # 기본값 반환 (개발 환경에서 자주 사용되는 포트들 포함)
         return [
             "http://localhost:5174",
             "http://localhost:5173",
+            "http://localhost:3000",
+            "http://127.0.0.1:5174",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:3000",
             "https://commit-tutor.vercel.app",
         ]
     

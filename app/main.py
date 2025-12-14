@@ -17,11 +17,34 @@ cors_origins = settings.cors_origins
 import logging
 logger = logging.getLogger(__name__)
 logger.info(f"CORS allowed origins: {cors_origins}")
+logger.info(f"DEBUG mode: {settings.DEBUG}")
 
+# 개발 환경에서는 로컬 호스트의 모든 포트를 허용하도록 처리
+# (실제로는 "*"를 사용할 수 없으므로 common ports 포함)
+if settings.DEBUG:
+    # 개발 환경: 로컬 호스트 패턴 추가
+    localhost_origins = [
+        "http://localhost:5174",
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://localhost:5175",
+        "http://localhost:5176",
+        "http://127.0.0.1:5174",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5175",
+        "http://127.0.0.1:5176",
+    ]
+    # 중복 제거하면서 합치기
+    combined_origins = list(set(cors_origins + localhost_origins))
+    cors_origins = combined_origins
+    logger.info(f"DEBUG mode: Extended CORS origins to {cors_origins}")
+
+# CORS 미들웨어 설정
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_credentials=True,
+    allow_credentials=True,  # JWT 인증을 위해 필요
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
     expose_headers=["*"],
