@@ -182,7 +182,6 @@ async def generate_learning_session(
         quiz = await quiz_generator.generate_quiz(
             commits=commits_details,
             question_count=request.questionCount,
-            difficulty=request.difficulty,
             selected_topic=request.selectedTopic
         )
 
