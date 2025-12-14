@@ -189,9 +189,66 @@ async def get_commit_details_async(client: httpx.AsyncClient, access_token: str,
         print(f"예외 발생: {e}")
         return None
 
-def get_repository_commits(access_token: str, owner: str, repo: str, branch: str, per_page: int = 100) -> List[Dict[str, Any]]:
+def parse_link_header(link_header: Optional[str]) -> Dict[str, Optional[int]]:
+    """
+    GitHub API의 Link 헤더를 파싱하여 페이지 정보를 추출합니다.
+    
+    예시: '<https://api.github.com/repositories/.../commits?page=2>; rel="next", <https://api.github.com/repositories/.../commits?page=10>; rel="last"'
+    
+    Returns:
+        Dict with 'next_page' and 'last_page' keys (None if not present)
+    """
+    if not link_header:
+        return {'next_page': None, 'last_page': None}
+    
+    result = {'next_page': None, 'last_page': None}
+    
+    # Link 헤더를 쉼표로 분리
+    links = link_header.split(',')
+    
+    for link in links:
+        # URL과 rel 관계를 분리
+        parts = link.split(';')
+        if len(parts) != 2:
+            continue
+            
+        url_part = parts[0].strip().strip('<>')
+        rel_part = parts[1].strip()
+        
+        # rel="next" 또는 rel="last" 추출
+        if 'rel="next"' in rel_part or "rel='next'" in rel_part:
+            # URL에서 page 파라미터 추출
+            if 'page=' in url_part:
+                try:
+                    page_num = int(url_part.split('page=')[1].split('&')[0].split('>')[0])
+                    result['next_page'] = page_num
+                except (ValueError, IndexError):
+                    pass
+        elif 'rel="last"' in rel_part or "rel='last'" in rel_part:
+            # URL에서 page 파라미터 추출
+            if 'page=' in url_part:
+                try:
+                    page_num = int(url_part.split('page=')[1].split('&')[0].split('>')[0])
+                    result['last_page'] = page_num
+                except (ValueError, IndexError):
+                    pass
+    
+    return result
+
+
+def get_repository_commits(
+    access_token: str, 
+    owner: str, 
+    repo: str, 
+    branch: str, 
+    page: int = 1,
+    per_page: int = 20
+) -> Dict[str, Any]:
     """
     특정 저장소의 특정 브랜치 커밋 내역 목록을 가져옵니다.
+    
+    Returns:
+        Dict with 'commits' (List) and 'pagination' (Dict with page info)
     """
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -204,19 +261,33 @@ def get_repository_commits(access_token: str, owner: str, repo: str, branch: str
     params = {
         "sha": branch,      # 브랜치 이름으로 필터링
         "per_page": per_page,
-        "page": 1,
+        "page": page,
     }
-    
-    all_commits = []
 
     try:
         response = requests.get(commits_endpoint, headers=headers, params=params, timeout=REQUEST_TIMEOUT_SECONDS)
         response.raise_for_status()
         
-        # 실제로는 Link 헤더를 이용해 페이지네이션 처리 필요
-        all_commits.extend(response.json())
+        commits = response.json()
         
-        return all_commits
+        # Link 헤더에서 페이지네이션 정보 추출
+        link_header = response.headers.get('Link', '')
+        page_info = parse_link_header(link_header)
+        
+        # 페이지네이션 메타데이터 구성
+        pagination = {
+            'current_page': page,
+            'per_page': per_page,
+            'has_next_page': page_info['next_page'] is not None,
+            'has_prev_page': page > 1,
+            'next_page': page_info['next_page'],
+            'total_pages': page_info['last_page'] if page_info['last_page'] else page,
+        }
+        
+        return {
+            'commits': commits,
+            'pagination': pagination
+        }
         
     except requests.exceptions.Timeout:
         raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="GitHub API timeout while fetching commits")
@@ -364,6 +435,8 @@ async def get_user_repo(access_token: str = Depends(get_github_access_token)):
 async def get_repo_commits_for_frontend(
     repo_identifier: str, # 경로에서 숫자 ID 또는 'owner/repo' 형태의 전체 이름을 받습니다.
     branch: str = Query("main", description="조회할 브랜치 이름"),
+    page: int = Query(1, ge=1, description="페이지 번호 (1부터 시작)"),
+    per_page: int = Query(20, ge=1, le=100, description="페이지당 커밋 수 (최대 100)"),
     access_token: str = Depends(get_github_access_token)
 ):
     """
@@ -411,14 +484,27 @@ async def get_repo_commits_for_frontend(
             detail=f"인식할 수 없는 저장소 식별자 형식입니다. 현재: {repo_identifier}"
         )
 
-
-    # 3. 커밋 목록 가져오기
-    raw_commits = get_repository_commits(access_token=access_token, owner=owner, repo=repo, branch=branch, per_page=20)
+    # 3. 커밋 목록 가져오기 (페이지네이션 정보 포함)
+    commits_response = get_repository_commits(
+        access_token=access_token, 
+        owner=owner, 
+        repo=repo, 
+        branch=branch, 
+        page=page,
+        per_page=per_page
+    )
+    
+    raw_commits = commits_response['commits']
+    pagination = commits_response['pagination']
 
     # 4. 상세 정보 포함하여 프론트엔드 형식으로 가공 (비동기 병렬 처리)
     clean_commits = await process_commits_data_async(access_token=access_token, owner=owner, repo=repo, raw_commits_list=raw_commits)
 
-    return clean_commits
+    # 5. 페이지네이션 정보와 함께 반환
+    return {
+        'commits': clean_commits,
+        'pagination': pagination
+    }
 
 
 def get_repository_branches(access_token: str, owner: str, repo: str, per_page: int = 100) -> List[Dict[str, Any]]:
