@@ -27,10 +27,32 @@ pip install -r requirements.txt
 
 ### 3. 환경 변수 설정
 
+`.env` 파일을 생성하고 다음 환경변수를 설정하세요:
+
 ```bash
-cp .env.example .env
-# .env 파일을 열어 필요한 값들을 설정하세요
+# Security
+SECRET_KEY=your-secret-key-change-this-in-production
+
+# GitHub OAuth
+GITHUB_CLIENT_ID=your_github_client_id
+GITHUB_CLIENT_SECRET=your_github_client_secret
+GITHUB_REDIRECT_URI=http://localhost:5174/auth/callback
+FRONTEND_URL=http://localhost:5174
+
+# OpenRouter API (for Gemini 2.0 Flash Experimental - Free)
+# Get your API key at: https://openrouter.ai/keys
+OPENROUTER_API_KEY=sk-or-v1-your-api-key-here
+
+# Database (optional)
+DATABASE_URL=postgresql+asyncpg://user:password@localhost/commit_tutor
 ```
+
+**OpenRouter API 키 발급 방법:**
+
+1. https://openrouter.ai 방문
+2. 계정 생성 (무료)
+3. https://openrouter.ai/keys 에서 API 키 발급
+4. 발급받은 키를 `.env` 파일의 `OPENROUTER_API_KEY`에 설정
 
 ### 4. 서버 실행
 

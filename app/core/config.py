@@ -33,8 +33,14 @@ class Settings(BaseSettings):
     # OpenAI Settings (for future AI features)
     OPENAI_API_KEY: str = ""
 
-    # Gemini Settings
+    # Gemini Settings (Legacy - deprecated)
     GEMINI_API_KEY: str = ""
+    
+    # OpenRouter Settings
+    OPENROUTER_API_KEY: str = ""
+    # 현재 모델: tngtech/deepseek-r1t2-chimera:free (안정적인 무료 모델)
+    # 다른 옵션: google/gemini-flash-1.5, google/gemini-2.0-flash-exp:free
+    OPENROUTER_MODEL: str = "tngtech/deepseek-r1t2-chimera:free"
 
     model_config = SettingsConfigDict(
         env_file=".env",

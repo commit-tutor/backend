@@ -1,9 +1,9 @@
 """
 Gemini API 호출 래퍼 서비스
-Google GenAI Python SDK를 사용하여 텍스트 생성 요청 처리
+OpenRouter API를 사용하여 Gemini 2.0 Flash Experimental 모델 호출
 """
 
-from google import genai
+import httpx
 from typing import Optional, Dict, Any
 import json
 import logging
@@ -17,21 +17,25 @@ logger = logging.getLogger(__name__)
 
 
 class GeminiService:
-    """Gemini API 통신을 담당하는 서비스 클래스"""
+    """OpenRouter API를 통한 Gemini 2.0 Flash Experimental 통신 서비스"""
 
     def __init__(self):
-        """Gemini API 초기화"""
-        if not settings.GEMINI_API_KEY:
-            logger.warning("GEMINI_API_KEY가 설정되지 않았습니다.")
+        """OpenRouter API 초기화"""
+        if not settings.OPENROUTER_API_KEY:
+            logger.warning("OPENROUTER_API_KEY가 설정되지 않았습니다.")
             self.is_configured = False
-            self.client = None
+            self.api_url = None
+            self.headers = None
         else:
-            # Google GenAI Client 초기화
-            self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
-            # Gemma 3 27B IT - Google의 오픈소스 instruction-tuned 모델
-            self.model_name = 'gemma-3-27b-it'
+            # OpenRouter API 설정
+            self.api_url = "https://openrouter.ai/api/v1/chat/completions"
+            self.headers = {
+                "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            self.model_name = "openai/gpt-oss-120b:free"
             self.is_configured = True
-            logger.info("Gemini API가 성공적으로 초기화되었습니다.")
+            logger.info(f"OpenRouter API 초기화 완료 (모델: {self.model_name})")
 
     async def generate_content(
         self,
@@ -40,7 +44,7 @@ class GeminiService:
         max_tokens: Optional[int] = None,
     ) -> str:
         """
-        Gemini API를 사용하여 텍스트 생성
+        OpenRouter API를 사용하여 텍스트 생성
 
         Args:
             prompt: 생성할 내용에 대한 프롬프트
@@ -54,66 +58,95 @@ class GeminiService:
             ValueError: API 키가 설정되지 않은 경우
             Exception: API 호출 실패 시
         """
-        if not self.is_configured or not self.client:
-            raise ValueError("Gemini API 키가 설정되지 않았습니다. GEMINI_API_KEY 환경 변수를 확인하세요.")
+        if not self.is_configured:
+            raise ValueError(
+                "OpenRouter API 키가 설정되지 않았습니다. "
+                "OPENROUTER_API_KEY 환경 변수를 확인하세요."
+            )
 
         try:
-            # GenerateContentConfig 설정
-            config = genai.types.GenerateContentConfig(
-                temperature=temperature,
-                max_output_tokens=max_tokens,
+            # OpenRouter API 요청 데이터 구성
+            request_data = {
+                "model": self.model_name,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "temperature": temperature,
+            }
+            
+            # max_tokens 옵션 추가
+            if max_tokens is not None:
+                request_data["max_tokens"] = max_tokens
+
+            logger.info(
+                f"OpenRouter API 호출 시작 (모델: {self.model_name}, "
+                f"프롬프트 길이: {len(prompt)} 문자, temperature: {temperature})"
             )
 
-            # 비동기 클라이언트로 content 생성
-            response = await self.client.aio.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config=config,
-            )
+            # 비동기 HTTP 요청
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    self.api_url,
+                    headers=self.headers,
+                    json=request_data
+                )
 
-            # 응답 구조 디버깅
-            logger.info(f"응답 객체 타입: {type(response)}")
-            logger.info(f"응답 candidates 개수: {len(response.candidates) if hasattr(response, 'candidates') else 'N/A'}")
+                # HTTP 상태 코드 확인
+                if response.status_code != 200:
+                    error_text = response.text
+                    logger.error(
+                        f"OpenRouter API 호출 실패 (HTTP {response.status_code}): {error_text}"
+                    )
+                    raise Exception(
+                        f"OpenRouter API 호출 실패 (HTTP {response.status_code}): {error_text}"
+                    )
 
-            # finish_reason 확인
-            if hasattr(response, 'candidates') and response.candidates:
-                finish_reason = response.candidates[0].finish_reason if hasattr(response.candidates[0], 'finish_reason') else None
-                logger.info(f"finish_reason: {finish_reason}")
+                # 응답 파싱
+                response_data = response.json()
+                
+                # 응답 구조 로깅
+                logger.info(f"응답 키: {list(response_data.keys())}")
+                
+                # choices에서 텍스트 추출
+                if "choices" not in response_data or not response_data["choices"]:
+                    logger.error(f"OpenRouter API 응답에 choices가 없습니다: {response_data}")
+                    raise Exception("OpenRouter API에서 빈 응답을 받았습니다.")
 
-                # MAX_TOKENS 경고
-                if finish_reason and 'MAX_TOKENS' in str(finish_reason):
-                    logger.warning(f"⚠️ 응답이 max_tokens 제한에 도달하여 잘렸습니다. max_tokens를 늘려주세요.")
+                choice = response_data["choices"][0]
+                
+                # finish_reason 확인
+                finish_reason = choice.get("finish_reason")
+                if finish_reason:
+                    logger.info(f"finish_reason: {finish_reason}")
+                    if finish_reason == "length":
+                        logger.warning(
+                            "⚠️ 응답이 max_tokens 제한에 도달하여 잘렸습니다. "
+                            "max_tokens를 늘려주세요."
+                        )
 
-            # 응답 텍스트 추출
-            if hasattr(response, 'text') and response.text:
-                logger.info(f"Gemini API 호출 성공 (프롬프트 길이: {len(prompt)} 문자, 응답 길이: {len(response.text)} 문자)")
-                return response.text
+                # 메시지 내용 추출
+                message = choice.get("message", {})
+                content = message.get("content", "")
+                
+                if not content:
+                    logger.error(f"OpenRouter API 응답 메시지가 비어있습니다: {response_data}")
+                    raise Exception("OpenRouter API에서 빈 메시지를 받았습니다.")
 
-            # 대체 방법: candidates에서 직접 추출
-            if hasattr(response, 'candidates') and response.candidates:
-                candidate = response.candidates[0]
-                if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts') and candidate.content.parts:
-                    text = candidate.content.parts[0].text
-                    logger.info(f"Gemini API 호출 성공 (candidates 방식, 응답 길이: {len(text)} 문자)")
-                    return text
+                logger.info(
+                    f"OpenRouter API 호출 성공 (응답 길이: {len(content)} 문자)"
+                )
+                
+                return content
 
-            # 모든 방법 실패
-            logger.error(f"Gemini API 응답이 비어있습니다. 응답 구조: {response}")
-            logger.error(f"response.candidates: {response.candidates if hasattr(response, 'candidates') else 'N/A'}")
-            if hasattr(response, 'prompt_feedback'):
-                logger.error(f"prompt_feedback: {response.prompt_feedback}")
-
-            # finish_reason이 MAX_TOKENS인 경우 더 명확한 에러 메시지
-            if hasattr(response, 'candidates') and response.candidates:
-                finish_reason = response.candidates[0].finish_reason if hasattr(response.candidates[0], 'finish_reason') else None
-                if finish_reason and 'MAX_TOKENS' in str(finish_reason):
-                    raise Exception(f"Gemini API 응답이 max_tokens 제한({max_tokens})에 도달하여 잘렸습니다. max_tokens 값을 늘려주세요.")
-
-            raise Exception("Gemini API에서 빈 응답을 받았습니다.")
-
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP 요청 실패: {str(e)}")
+            raise Exception(f"OpenRouter API 호출 중 네트워크 오류 발생: {str(e)}")
         except Exception as e:
-            logger.error(f"Gemini API 호출 실패: {str(e)}")
-            raise Exception(f"Gemini API 호출 중 오류 발생: {str(e)}")
+            logger.error(f"OpenRouter API 호출 실패: {str(e)}")
+            raise Exception(f"OpenRouter API 호출 중 오류 발생: {str(e)}")
 
     async def generate_json(
         self,

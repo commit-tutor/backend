@@ -50,7 +50,6 @@ class LearningTopicResponse(BaseModel):
     id: str = Field(..., description="주제 고유 ID")
     title: str = Field(..., description="주제 제목")
     description: str = Field(..., description="주제 설명")
-    difficulty: str = Field(..., description="예상 난이도 (easy, medium, hard)")
     keywords: List[str] = Field(..., description="주제 관련 키워드")
 
     class Config:
@@ -59,7 +58,6 @@ class LearningTopicResponse(BaseModel):
                 "id": "topic_1",
                 "title": "비동기 프로그래밍 (Async/Await)",
                 "description": "Promise 기반 비동기 처리 패턴과 이벤트 루프의 동작 원리",
-                "difficulty": "medium",
                 "keywords": ["async", "await", "Promise", "비동기", "event loop"]
             }
         }
@@ -90,7 +88,6 @@ class TopicExtractionResponse(BaseModel):
                         "id": "topic_1",
                         "title": "JWT 인증 시스템",
                         "description": "토큰 기반 인증의 장단점과 보안 고려사항",
-                        "difficulty": "medium",
                         "keywords": ["JWT", "인증", "보안", "토큰"]
                     }
                 ],
