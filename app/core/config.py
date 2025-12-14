@@ -95,12 +95,13 @@ class Settings(BaseSettings):
         """
         # 개별 DB 설정이 모두 있는 경우
         if self.DB_USER and self.DB_PASSWORD and self.DB_HOST:
+            # psycopg2 driver for synchronous SQLAlchemy
             return f"postgresql+psycopg2://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}?sslmode=require"
-        
+
         # DATABASE_URL 사용
         if self.DATABASE_URL:
             return self.DATABASE_URL
-        
+
         # 환경 변수가 하나도 설정되지 않은 경우 명확한 에러
         raise ValueError(
             "Database configuration is missing. Please set either:\n"
