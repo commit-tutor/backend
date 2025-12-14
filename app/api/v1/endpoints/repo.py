@@ -319,18 +319,25 @@ async def process_commits_data_async(access_token: str, owner: str, repo: str, r
 
             # 날짜 포맷팅
             raw_date_str = author_info.get('date')
-            formatted_date = raw_date_str
-            try:
-                dt_object = datetime.strptime(raw_date_str, "%Y-%m-%dT%H:%M:%SZ")
-                formatted_date = dt_object.strftime("%Y-%m-%d %H:%M:%S (UTC)")
-            except ValueError:
-                pass
+            formatted_date = raw_date_str or 'Unknown'
+            if raw_date_str:
+                try:
+                    dt_object = datetime.strptime(raw_date_str, "%Y-%m-%dT%H:%M:%SZ")
+                    formatted_date = dt_object.strftime("%Y-%m-%d %H:%M:%S (UTC)")
+                except (ValueError, TypeError):
+                    pass
+
+            # Author 정보 안전하게 추출
+            author_data = commit_data.get('author')
+            author_login = author_data.get('login') if author_data else None
+            author_name = author_info.get('name') if author_info else None
+            author = author_login or author_name or 'Unknown'
 
             # 데이터 가공
             processed_commit = {
                 "sha": sha,
                 "message": commit_info.get('message', '').strip(),
-                "author": commit_data.get('author', {}).get('login') or author_info.get('name'),
+                "author": author,
                 "date": formatted_date,
                 "filesChanged": files_changed,
                 "additions": additions,
