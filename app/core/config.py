@@ -76,7 +76,25 @@ class Settings(BaseSettings):
         return self._parse_cors_origins()
 
     # Database Settings
-    DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost/commit_tutor"
+    # 개별 DB 연결 정보 (Supabase Session Pooler 사용)
+    DB_USER: str = "postgres.mdqpzwhhbpmcvcxvjhld"
+    DB_PASSWORD: str = ""
+    DB_HOST: str = "aws-1-ap-northeast-1.pooler.supabase.com"
+    DB_PORT: str = "5432"
+    DB_NAME: str = "postgres"
+    
+    # 기존 DATABASE_URL (하위 호환성 유지)
+    DATABASE_URL: str = ""
+    
+    @property
+    def database_url(self) -> str:
+        """
+        데이터베이스 연결 URL 생성
+        개별 설정이 있으면 사용하고, 없으면 DATABASE_URL 사용
+        """
+        if self.DB_USER and self.DB_PASSWORD and self.DB_HOST:
+            return f"postgresql+psycopg2://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}?sslmode=require"
+        return self.DATABASE_URL
 
     # Security Settings
     SECRET_KEY: str = "your-secret-key-change-this-in-production"
