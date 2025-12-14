@@ -28,8 +28,8 @@ class GeminiService:
         else:
             # Google GenAI Client 초기화
             self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
-            # Gemini 2.0 Flash-Lite - 빠르고 안정적인 모델 (stable release)
-            self.model_name = 'models/gemini-2.5-flash-lite'
+            # Gemma 3 27B IT - Google의 오픈소스 instruction-tuned 모델
+            self.model_name = 'gemma-3-27b-it'
             self.is_configured = True
             logger.info("Gemini API가 성공적으로 초기화되었습니다.")
 
