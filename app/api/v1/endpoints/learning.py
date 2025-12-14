@@ -9,8 +9,8 @@ import logging
 from app.api.dependencies import get_github_access_token
 from app.api.v1.endpoints.repo import get_commit_with_diff, get_repository_by_id
 from app.schemas.quiz import QuizGenerationRequest, TopicExtractionRequest
-from app.services.learning_session_service import get_learning_session_service
-from app.services.topic_extractor import get_topic_extractor_service
+from app.services.quiz_generator import get_quiz_generator
+from app.services.topic_generator import get_topic_generator
 
 logger = logging.getLogger(__name__)
 
@@ -18,25 +18,25 @@ router = APIRouter()
 
 
 @router.post("/topics")
-async def extract_learning_topics(
+async def generate_learning_topics(
     request: TopicExtractionRequest = Body(...),
     access_token: str = Depends(get_github_access_token)
 ):
     """
-    커밋에서 학습 가능한 주제 추출
+    커밋에서 학습 가능한 주제 생성
 
     **요청 본문:**
     - commitShas: 분석할 커밋 SHA 목록 (형식: "owner/repo:sha" 또는 "repo_id:sha")
 
     **응답:**
-    - topics: 추출된 학습 주제 목록 (id, title, description, difficulty, keywords)
-    - metadata: 메타데이터 (총 커밋 수, 추출 시간 등)
+    - topics: 생성된 학습 주제 목록 (id, title, description, difficulty, keywords)
+    - metadata: 메타데이터 (총 커밋 수, 생성 시간 등)
 
-    이 엔드포인트는 커밋의 코드 변경사항을 분석하여 학습 가능한 CS 주제를 추출합니다.
-    사용자는 추출된 주제 중 하나를 선택하여 해당 주제에 집중한 퀴즈를 생성할 수 있습니다.
+    이 엔드포인트는 커밋의 코드 변경사항을 분석하여 학습 가능한 CS 주제를 생성합니다.
+    사용자는 생성된 주제 중 하나를 선택하여 해당 주제에 집중한 퀴즈를 생성할 수 있습니다.
     """
     try:
-        logger.info(f"========== 주제 추출 API 요청 ==========")
+        logger.info(f"========== 주제 생성 API 요청 ==========")
         logger.info(f"요청 데이터: {request.dict()}")
         logger.info(f"커밋 개수: {len(request.commitShas)}")
 
@@ -85,13 +85,13 @@ async def extract_learning_topics(
                 detail="유효한 커밋 정보를 가져올 수 없습니다."
             )
 
-        # 주제 추출
-        logger.info(f"[주제 추출] Gemini API 호출로 학습 주제 추출 시작")
-        topic_service = get_topic_extractor_service()
-        result = await topic_service.extract_topics(commits=commits_details)
+        # 주제 생성
+        logger.info(f"[주제 생성] Gemini API 호출로 학습 주제 생성 시작")
+        topic_generator = get_topic_generator()
+        result = await topic_generator.generate_topics(commits=commits_details)
 
-        logger.info(f"========== 주제 추출 API 응답 ==========")
-        logger.info(f"추출된 주제: {len(result.topics)}개")
+        logger.info(f"========== 주제 생성 API 응답 ==========")
+        logger.info(f"생성된 주제: {len(result.topics)}개")
         logger.info(f"==========================================")
 
         return result
@@ -99,10 +99,10 @@ async def extract_learning_topics(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"주제 추출 중 오류: {str(e)}")
+        logger.error(f"주제 생성 중 오류: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"주제 추출 중 오류가 발생했습니다: {str(e)}"
+            detail=f"주제 생성 중 오류가 발생했습니다: {str(e)}"
         )
 
 
@@ -179,8 +179,8 @@ async def generate_learning_session(
         # 퀴즈 생성
         topic_info = f" (주제: {request.selectedTopic})" if request.selectedTopic else ""
         logger.info(f"[학습 세션] Gemini API 호출로 퀴즈 생성 시작{topic_info}")
-        session_service = get_learning_session_service()
-        quiz = await session_service.generate_learning_session(
+        quiz_generator = get_quiz_generator()
+        quiz = await quiz_generator.generate_quiz(
             commits=commits_details,
             question_count=request.questionCount,
             difficulty=request.difficulty,

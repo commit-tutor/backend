@@ -1,6 +1,6 @@
 """
-학습 세션 통합 서비스
-퀴즈와 코드 리뷰를 단일 API 호출로 생성하여 토큰 절약
+퀴즈 생성 서비스
+커밋 분석을 통해 CS 지식 퀴즈 생성
 """
 
 from typing import List, Optional
@@ -14,21 +14,21 @@ from app.schemas.analysis import CommitDetailResponse
 logger = logging.getLogger(__name__)
 
 
-class LearningSessionService:
-    """퀴즈와 코드 리뷰를 통합 생성하는 서비스"""
+class QuizGenerator:
+    """커밋 기반 CS 퀴즈를 생성하는 서비스"""
 
     def __init__(self):
         self.gemini_service = get_gemini_service()
         self._max_patch_preview_length = 1200
 
-    def _build_unified_prompt(
+    def _build_quiz_prompt(
         self,
         commits: List[CommitDetailResponse],
         question_count: int,
         difficulty: str,
         selected_topic: Optional[str] = None
     ) -> str:
-        """통합 프롬프트 생성 (퀴즈 + 리뷰)"""
+        """퀴즈 생성 프롬프트 구성"""
 
         difficulty_guide = {
             "easy": "기본적인 CS 개념과 프로그래밍 원리",
@@ -199,7 +199,7 @@ codeContext: null
 
         return prompt
 
-    async def generate_learning_session(
+    async def generate_quiz(
         self,
         commits: List[CommitDetailResponse],
         question_count: int = 5,
@@ -207,12 +207,12 @@ codeContext: null
         selected_topic: Optional[str] = None
     ) -> QuizGenerationResponse:
         """
-        퀴즈 생성
+        커밋 기반 CS 퀴즈 생성
 
         Args:
             commits: 커밋 상세 정보 목록
             question_count: 생성할 퀴즈 개수
-            difficulty: 난이도
+            difficulty: 난이도 (easy, medium, hard)
             selected_topic: 선택된 주제 제목 (선택 시 해당 주제에 집중)
 
         Returns:
@@ -220,21 +220,21 @@ codeContext: null
         """
         try:
             topic_info = f", 주제: {selected_topic}" if selected_topic else ""
-            logger.info(f"[LearningSession] 퀴즈 생성 시작: {len(commits)}개 커밋, 난이도: {difficulty}{topic_info}")
+            logger.info(f"[QuizGenerator] 퀴즈 생성 시작: {len(commits)}개 커밋, 난이도: {difficulty}{topic_info}")
 
             # 프롬프트 구성
-            prompt = self._build_unified_prompt(commits, question_count, difficulty, selected_topic)
-            logger.info(f"[LearningSession] 프롬프트 길이: {len(prompt)} 문자")
+            prompt = self._build_quiz_prompt(commits, question_count, difficulty, selected_topic)
+            logger.info(f"[QuizGenerator] 프롬프트 길이: {len(prompt)} 문자")
 
             # Gemini API 호출
-            logger.info(f"[LearningSession] Gemini API 호출 중...")
+            logger.info(f"[QuizGenerator] Gemini API 호출 중...")
             response_data = await self.gemini_service.generate_json(
                 prompt=prompt,
                 temperature=0.4,
                 max_tokens=8000
             )
 
-            logger.info(f"[LearningSession] Gemini 응답 키: {list(response_data.keys())}")
+            logger.info(f"[QuizGenerator] Gemini 응답 키: {list(response_data.keys())}")
 
             # 응답 검증
             if "questions" not in response_data:
@@ -268,22 +268,22 @@ codeContext: null
                 }
             )
 
-            logger.info(f"[LearningSession] 퀴즈 생성 완료: {len(questions)}개")
+            logger.info(f"[QuizGenerator] 퀴즈 생성 완료: {len(questions)}개")
 
             return quiz_response
 
         except Exception as e:
-            logger.error(f"[LearningSession] 퀴즈 생성 실패: {str(e)}")
+            logger.error(f"[QuizGenerator] 퀴즈 생성 실패: {str(e)}")
             raise ValueError(f"퀴즈 생성 중 오류 발생: {str(e)}")
 
 
 # 싱글톤 인스턴스
-_learning_session_service = None
+_quiz_generator = None
 
 
-def get_learning_session_service() -> LearningSessionService:
-    """LearningSessionService 싱글톤 인스턴스 반환"""
-    global _learning_session_service
-    if _learning_session_service is None:
-        _learning_session_service = LearningSessionService()
-    return _learning_session_service
+def get_quiz_generator() -> QuizGenerator:
+    """QuizGenerator 싱글톤 인스턴스 반환"""
+    global _quiz_generator
+    if _quiz_generator is None:
+        _quiz_generator = QuizGenerator()
+    return _quiz_generator

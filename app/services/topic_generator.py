@@ -1,6 +1,6 @@
 """
-학습 주제 추출 서비스
-커밋 코드 분석을 통해 학습 가능한 CS 주제 추출
+학습 주제 생성 서비스
+커밋 코드 분석을 통해 학습 가능한 CS 주제 생성
 """
 
 from typing import List, Dict, Any
@@ -14,18 +14,18 @@ from app.schemas.analysis import CommitDetailResponse
 logger = logging.getLogger(__name__)
 
 
-class TopicExtractorService:
-    """커밋에서 학습 주제를 추출하는 서비스"""
+class TopicGenerator:
+    """커밋에서 학습 주제를 생성하는 서비스"""
 
     def __init__(self):
         self.gemini_service = get_gemini_service()
         self._max_patch_preview_length = 1200
 
-    def _build_topic_extraction_prompt(
+    def _build_topic_prompt(
         self,
         commits: List[CommitDetailResponse]
     ) -> str:
-        """주제 추출용 프롬프트 생성"""
+        """주제 생성용 프롬프트 구성"""
 
         # 커밋 정보 요약
         commits_summary = []
@@ -77,16 +77,16 @@ class TopicExtractorService:
   ]
 }"""
 
-        prompt = f"""당신은 CS 교육 전문가입니다. 아래 커밋의 코드 변경사항을 분석하여 **학습할 수 있는 CS 주제**를 추출하세요.
+        prompt = f"""당신은 CS 교육 전문가입니다. 아래 커밋의 코드 변경사항을 분석하여 **학습할 수 있는 CS 주제**를 생성하세요.
 
 # 커밋 정보
 {commits_text}
 
-# 주제 추출 원칙
-1. **실제 코드에서 발견된 기술/패턴**을 기반으로 주제를 추출하세요
+# 주제 생성 원칙
+1. **실제 코드에서 발견된 기술/패턴**을 기반으로 주제를 생성하세요
 2. **이론과 실무가 연결되는 주제**를 우선시하세요
 3. **너무 지엽적인 주제는 제외**하고 보편적인 CS 개념을 선택하세요
-4. **난이도가 다양**하도록 3-5개 주제를 추출하세요
+4. **난이도가 다양**하도록 3-5개 주제를 생성하세요
 
 ## 좋은 주제 예시
 ✅ "비동기 프로그래밍" - async/await 코드 발견 시
@@ -116,44 +116,44 @@ class TopicExtractorService:
 # 절대 규칙
 1. 유효한 JSON만 출력 (마크다운 금지)
 2. 실제 커밋 코드에서 발견한 기술만 주제로 선택
-3. 3-5개의 주제를 추출 (너무 많지 않게)
+3. 3-5개의 주제를 생성 (너무 많지 않게)
 4. 각 주제는 CS 이론과 연결되어야 함
 5. 난이도가 다양하도록 구성
 6. 문자열 이스케이프: \\n, \\"
 
-위 커밋에서 학습 가능한 CS 주제를 JSON으로 추출하세요:"""
+위 커밋에서 학습 가능한 CS 주제를 JSON으로 생성하세요:"""
 
         return prompt
 
-    async def extract_topics(
+    async def generate_topics(
         self,
         commits: List[CommitDetailResponse]
     ) -> TopicExtractionResponse:
         """
-        커밋에서 학습 주제 추출
+        커밋에서 학습 주제 생성
 
         Args:
             commits: 커밋 상세 정보 목록
 
         Returns:
-            TopicExtractionResponse: 추출된 주제 목록
+            TopicExtractionResponse: 생성된 주제 목록
         """
         try:
-            logger.info(f"[TopicExtractor] 주제 추출 시작: {len(commits)}개 커밋")
+            logger.info(f"[TopicGenerator] 주제 생성 시작: {len(commits)}개 커밋")
 
             # 프롬프트 구성
-            prompt = self._build_topic_extraction_prompt(commits)
-            logger.info(f"[TopicExtractor] 프롬프트 길이: {len(prompt)} 문자")
+            prompt = self._build_topic_prompt(commits)
+            logger.info(f"[TopicGenerator] 프롬프트 길이: {len(prompt)} 문자")
 
             # Gemini API 호출
-            logger.info(f"[TopicExtractor] Gemini API 호출 중...")
+            logger.info(f"[TopicGenerator] Gemini API 호출 중...")
             response_data = await self.gemini_service.generate_json(
                 prompt=prompt,
                 temperature=0.5,  # 창의성을 위해 약간 높은 온도
                 max_tokens=4000
             )
 
-            logger.info(f"[TopicExtractor] Gemini 응답 키: {list(response_data.keys())}")
+            logger.info(f"[TopicGenerator] Gemini 응답 키: {list(response_data.keys())}")
 
             # 응답 검증
             if "topics" not in response_data:
@@ -174,7 +174,7 @@ class TopicExtractorService:
                     logger.warning(f"주제 {idx + 1} 파싱 실패: {str(e)}")
                     continue
 
-            logger.info(f"[TopicExtractor] 주제 추출 완료: {len(topics)}개")
+            logger.info(f"[TopicGenerator] 주제 생성 완료: {len(topics)}개")
 
             return TopicExtractionResponse(
                 topics=topics,
@@ -186,17 +186,17 @@ class TopicExtractorService:
             )
 
         except Exception as e:
-            logger.error(f"[TopicExtractor] 주제 추출 실패: {str(e)}")
-            raise ValueError(f"주제 추출 중 오류 발생: {str(e)}")
+            logger.error(f"[TopicGenerator] 주제 생성 실패: {str(e)}")
+            raise ValueError(f"주제 생성 중 오류 발생: {str(e)}")
 
 
 # 싱글톤 인스턴스
-_topic_extractor_service = None
+_topic_generator = None
 
 
-def get_topic_extractor_service() -> TopicExtractorService:
-    """TopicExtractorService 싱글톤 인스턴스 반환"""
-    global _topic_extractor_service
-    if _topic_extractor_service is None:
-        _topic_extractor_service = TopicExtractorService()
-    return _topic_extractor_service
+def get_topic_generator() -> TopicGenerator:
+    """TopicGenerator 싱글톤 인스턴스 반환"""
+    global _topic_generator
+    if _topic_generator is None:
+        _topic_generator = TopicGenerator()
+    return _topic_generator
