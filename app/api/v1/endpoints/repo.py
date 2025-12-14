@@ -233,8 +233,6 @@ def process_commits_data(access_token: str, owner: str, repo: str, raw_commits_l
     """
     processed_list = []
 
-    learning_values: List[str] = ['high', 'medium', 'low']
-
     for commit_data in raw_commits_list:
         sha = commit_data.get('sha')
         commit_info = commit_data.get('commit', {})
@@ -273,7 +271,6 @@ def process_commits_data(access_token: str, owner: str, repo: str, raw_commits_l
             "filesChanged": files_changed,    # 🌟 상세 API 호출 결과
             "additions": additions,          # 🌟 상세 API 호출 결과
             "deletions": deletions,          # 🌟 상세 API 호출 결과
-            "learningValue": random.choice(learning_values), # 💡 임시 값
             "isCompleted": random.choice([True, False, False]), # 💡 임시 값
         }
 
@@ -285,8 +282,6 @@ async def process_commits_data_async(access_token: str, owner: str, repo: str, r
     """
     비동기로 GitHub 커밋 목록을 처리하고 상세 정보를 병렬로 가져옵니다.
     """
-    learning_values: List[str] = ['high', 'medium', 'low']
-
     async with httpx.AsyncClient() as client:
         # 모든 커밋의 상세 정보를 병렬로 가져오기
         tasks = []
@@ -342,7 +337,6 @@ async def process_commits_data_async(access_token: str, owner: str, repo: str, r
                 "filesChanged": files_changed,
                 "additions": additions,
                 "deletions": deletions,
-                "learningValue": random.choice(learning_values),
                 "isCompleted": random.choice([True, False, False]),
             }
 
